@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package com.example.api;
+
+option java_package = "com.example.api";
+option java_outer_classname = "HelloProto";
+option java_multiple_files = true;
+
+// Hello Service definition
+service HelloService {
+  rpc SayHello (HelloRequest) returns (HelloReply) {}
+}
+
+// The request message containing the user's name
+message HelloRequest {
+  string name = 1;
+}
+
+// The response message containing the greetings
+message HelloReply {
+  string message = 1;
+}
