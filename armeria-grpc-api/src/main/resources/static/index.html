@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proto 发布管理</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .header {
+            margin-bottom: 28px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: #777;
+        }
+
+        .card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            padding: 28px 30px;
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group:last-of-type { margin-bottom: 24px; }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: #555;
+            margin-bottom: 6px;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 14px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            outline: none;
+            transition: border-color .15s;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus {
+            border-color: #4a90d9;
+            box-shadow: 0 0 0 2px rgba(74,144,217,.15);
+        }
+
+        .file-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .file-name {
+            flex: 1;
+            padding: 8px 10px;
+            font-size: 13px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #fafafa;
+            color: #999;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .file-name.has-file { color: #333; }
+
+        .btn-choose {
+            padding: 8px 16px;
+            font-size: 13px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            background: #fff;
+            cursor: pointer;
+            white-space: nowrap;
+            font-family: inherit;
+            transition: background .15s;
+        }
+
+        .btn-choose:hover { background: #f0f0f0; }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+
+        .checkbox-row input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            accent-color: #4a90d9;
+            cursor: pointer;
+        }
+
+        .checkbox-row label {
+            font-size: 13px;
+            color: #555;
+            cursor: pointer;
+            margin-bottom: 0;
+        }
+
+        .version-preview {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+            min-height: 16px;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 10px 0;
+            font-size: 14px;
+            font-weight: 500;
+            color: #fff;
+            background: #4a90d9;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background .15s;
+        }
+
+        .btn-submit:hover { background: #3a7bc8; }
+        .btn-submit:disabled { background: #b0b0b0; cursor: not-allowed; }
+
+        .result {
+            padding: 14px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            line-height: 1.5;
+            display: none;
+        }
+
+        .result.success {
+            display: block;
+            background: #edf7ed;
+            border: 1px solid #c8e6c9;
+            color: #2e7d32;
+        }
+
+        .result.error {
+            display: block;
+            background: #fdeded;
+            border: 1px solid #f5c6cb;
+            color: #c62828;
+        }
+
+        .result .coords {
+            font-family: "SF Mono", "Menlo", "Consolas", monospace;
+            font-size: 12px;
+            margin-top: 4px;
+            color: #555;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>Proto 发布管理</h1>
+        <p>上传 .proto 文件并发布到 Maven 仓库</p>
+    </div>
+
+    <form class="card" id="uploadForm">
+        <div class="form-group">
+            <label for="file">Proto 文件</label>
+            <div class="file-row">
+                <div class="file-name" id="fileNameDisplay">未选择文件</div>
+                <button type="button" class="btn-choose" id="btnChoose">选择文件</button>
+            </div>
+            <input type="file" id="file" name="file" accept=".proto" hidden>
+            <div style="font-size:12px;color:#999;margin-top:4px;">仅支持 .proto 文件</div>
+        </div>
+
+        <div class="form-group">
+            <label for="groupId">GroupId</label>
+            <input type="text" id="groupId" name="groupId" placeholder="com.example" required>
+        </div>
+
+        <div class="form-group">
+            <label for="artifactId">ArtifactId</label>
+            <input type="text" id="artifactId" name="artifactId" placeholder="hello-grpc" required>
+        </div>
+
+        <div class="form-group">
+            <label for="version">Version</label>
+            <input type="text" id="version" name="version" placeholder="1.0.0" required>
+            <div class="version-preview" id="versionPreview"></div>
+        </div>
+
+        <div class="checkbox-row">
+            <input type="checkbox" id="snapshot" name="snapshot">
+            <label for="snapshot">SNAPSHOT 版本</label>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">提交发布</button>
+    </form>
+
+    <div class="result" id="result"></div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('file');
+    const btnChoose = document.getElementById('btnChoose');
+    const fileNameDisplay = document.getElementById('fileNameDisplay');
+    const versionInput = document.getElementById('version');
+    const snapshotCheck = document.getElementById('snapshot');
+    const versionPreview = document.getElementById('versionPreview');
+    const uploadForm = document.getElementById('uploadForm');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const resultDiv = document.getElementById('result');
+
+    btnChoose.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', () => {
+        if (fileInput.files.length > 0) {
+            const name = fileInput.files[0].name;
+            fileNameDisplay.textContent = name;
+            fileNameDisplay.classList.add('has-file');
+        } else {
+            fileNameDisplay.textContent = '未选择文件';
+            fileNameDisplay.classList.remove('has-file');
+        }
+    });
+
+    function resolveVersion() {
+        var v = versionInput.value.trim();
+        if (!v) return '';
+        if (snapshotCheck.checked) {
+            return v.endsWith('-SNAPSHOT') ? v : v + '-SNAPSHOT';
+        }
+        return v;
+    }
+
+    function updatePreview() {
+        var resolved = resolveVersion();
+        if (resolved && resolved !== versionInput.value.trim()) {
+            versionPreview.textContent = '实际版本: ' + resolved;
+        } else {
+            versionPreview.textContent = '';
+        }
+    }
+
+    versionInput.addEventListener('input', updatePreview);
+    snapshotCheck.addEventListener('change', updatePreview);
+
+    uploadForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        var file = fileInput.files[0];
+        if (!file) { showResult('error', '请选择 proto 文件'); return; }
+
+        var groupId = document.getElementById('groupId').value.trim();
+        var artifactId = document.getElementById('artifactId').value.trim();
+        var version = resolveVersion();
+
+        if (!groupId || !artifactId || !version) {
+            showResult('error', 'GroupId、ArtifactId、Version 不能为空');
+            return;
+        }
+
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = '构建中...';
+        resultDiv.style.display = 'none';
+
+        var formData = new FormData();
+        formData.append('file', file);
+        formData.append('groupId', groupId);
+        formData.append('artifactId', artifactId);
+        formData.append('version', version);
+
+        fetch('/api/proto/upload', { method: 'POST', body: formData })
+            .then(function(res) {
+                return res.json().then(function(data) { return { status: res.status, body: data }; });
+            })
+            .then(function(result) {
+                if (result.status === 200) {
+                    showResult('success', '发布成功', result.body.coordinates);
+                } else {
+                    showResult('error', result.body.error || result.body.message || '未知错误');
+                }
+            })
+            .catch(function(err) {
+                showResult('error', '请求失败: ' + err.message);
+            })
+            .finally(function() {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = '提交发布';
+            });
+    });
+
+    function showResult(type, message, coords) {
+        resultDiv.className = 'result ' + type;
+        var html = message;
+        if (coords) html += '<div class="coords">' + coords + '</div>';
+        resultDiv.innerHTML = html;
+        resultDiv.style.display = 'block';
+    }
+</script>
+</body>
+</html>

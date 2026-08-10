@@ -1,0 +1,65 @@
+package org.example.rpc.context;
+
+import io.grpc.ForwardingServerCallListener;
+import io.grpc.Metadata;
+import io.grpc.ServerCall;
+import io.grpc.ServerCallHandler;
+import io.grpc.ServerInterceptor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * gRPC {@link ServerInterceptor} that reads client context metadata from incoming
+ * RPC calls and stores it in {@link ClientContextHolder} for the duration of the call.
+ */
+public class ClientContextServerInterceptor implements ServerInterceptor {
+
+    private static final Logger log = LoggerFactory.getLogger(ClientContextServerInterceptor.class);
+
+    private static final Metadata.Key<String> CLIENT_IP_KEY =
+            Metadata.Key.of("x-client-ip", Metadata.ASCII_STRING_MARSHALLER);
+    private static final Metadata.Key<String> CLIENT_HOSTNAME_KEY =
+            Metadata.Key.of("x-client-hostname", Metadata.ASCII_STRING_MARSHALLER);
+    private static final Metadata.Key<String> CLIENT_IDC_KEY =
+            Metadata.Key.of("x-client-idc", Metadata.ASCII_STRING_MARSHALLER);
+    private static final Metadata.Key<String> CLIENT_GROUP_NAME_KEY =
+            Metadata.Key.of("x-client-group-name", Metadata.ASCII_STRING_MARSHALLER);
+
+    @Override
+    public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
+            ServerCall<ReqT, RespT> call,
+            Metadata headers,
+            ServerCallHandler<ReqT, RespT> next) {
+
+        ClientContext ctx = new ClientContext(
+                headers.get(CLIENT_IP_KEY),
+                headers.get(CLIENT_HOSTNAME_KEY),
+                headers.get(CLIENT_IDC_KEY),
+                headers.get(CLIENT_GROUP_NAME_KEY));
+
+        ClientContextHolder.set(ctx);
+        log.debug("Set ClientContext: {}", ctx);
+
+        ServerCall.Listener<ReqT> delegate = next.startCall(call, headers);
+
+        return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {
+            @Override
+            public void onComplete() {
+                try {
+                    super.onComplete();
+                } finally {
+                    ClientContextHolder.clear();
+                }
+            }
+
+            @Override
+            public void onCancel() {
+                try {
+                    super.onCancel();
+                } finally {
+                    ClientContextHolder.clear();
+                }
+            }
+        };
+    }
+}

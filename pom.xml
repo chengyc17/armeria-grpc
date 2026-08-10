@@ -11,6 +11,7 @@
     <modules>
         <module>armeria-grpc-api</module>
         <module>armeria-server</module>
+        <module>test</module>
     </modules>
 
     <properties>
@@ -20,6 +21,8 @@
         <armeria.version>1.27.0</armeria.version>
         <protobuf.version>3.25.1</protobuf.version>
         <grpc.version>1.59.0</grpc.version>
+        <spring-boot.version>3.2.0</spring-boot.version>
+        <nacos-client.version>2.3.0</nacos-client.version>
     </properties>
 
     <dependencyManagement>
@@ -41,6 +44,16 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+
+            <!-- Spring Boot -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
         </dependencies>
     </dependencyManagement>
 

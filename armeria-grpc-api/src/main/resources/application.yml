@@ -1,0 +1,14 @@
+maven:
+  working-dir: /tmp/proto-build
+  deploy:
+    release:
+      server-id: nexus-releases
+      url: http://localhost:8081/repository/maven-releases/
+    snapshot:
+      server-id: nexus-snapshots
+      url: http://localhost:8081/repository/maven-snapshots/
+    username: admin
+    password: admin
+
+server:
+  port: 9080
