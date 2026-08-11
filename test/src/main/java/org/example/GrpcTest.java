@@ -3,7 +3,9 @@ package org.example;
 import com.example.userservice.*;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import org.example.rpc.annotation.GrpcService;
 
+@GrpcService
 public class GrpcTest extends UserServiceGrpc.UserServiceImplBase {
 
     @Override

@@ -11,6 +11,7 @@ import org.example.rpc.context.ClientContextServerInterceptor;
 import org.example.rpc.schema.GrpcJsonSchemaGenerator;
 import org.example.rpc.schema.SchemaEndpoint;
 import org.example.rpc.server.AppIdReader;
+import org.example.rpc.server.NacosInstanceRegistrar;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
@@ -29,7 +30,7 @@ public class RpcAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RpcAutoConfiguration.class);
 
-    @Bean
+    @Bean(destroyMethod = "shutDown")
     public NamingService namingService(RpcProperties properties) throws Exception {
         Properties props = new Properties();
         props.setProperty("serverAddr", properties.getNacos().getServerAddr());
@@ -38,6 +39,11 @@ public class RpcAutoConfiguration {
             props.setProperty("namespace", namespace);
         }
         return NamingFactory.createNamingService(props);
+    }
+
+    @Bean(destroyMethod = "deregister")
+    public NacosInstanceRegistrar nacosInstanceRegistrar(NamingService namingService) {
+        return new NacosInstanceRegistrar(namingService);
     }
 
     @Bean
@@ -75,7 +81,7 @@ public class RpcAutoConfiguration {
 
     @Bean(destroyMethod = "stop")
     public Server armeriaServer(ApplicationContext ctx, RpcProperties properties,
-                                 NamingService namingService,
+                                 NacosInstanceRegistrar registrar,
                                  SchemaEndpoint schemaEndpoint,
                                  ClientContextServerInterceptor serverInterceptor) throws Exception {
 
@@ -117,7 +123,7 @@ public class RpcAutoConfiguration {
         log.info("Armeria server started on port {} with appId={}", properties.getPort(), appId);
 
         String host = InetAddress.getLocalHost().getHostAddress();
-        namingService.registerInstance(appId, host, properties.getPort());
+        registrar.register(appId, host, properties.getPort());
         log.info("Registered service {} -> {}:{} to Nacos", appId, host, properties.getPort());
 
         return server;

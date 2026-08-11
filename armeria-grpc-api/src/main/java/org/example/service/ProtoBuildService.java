@@ -130,10 +130,9 @@ public class ProtoBuildService {
                                 "-Daether.connector.basic.threads=1",
                                 "-Daether.connector.connectTimeout=30000",
                                 "-Daether.connector.requestTimeout=30000",
-                                "-DaltReleaseDeploymentRepository=" + releaseServerId
-                                        + "::default::" + releaseUrl,
-                                "-DaltSnapshotDeploymentRepository=" + snapshotServerId
-                                        + "::default::" + snapshotUrl,
+                                "-DaltDeploymentRepository=" + (version.endsWith("-SNAPSHOT")
+                                        ? snapshotServerId + "::default::" + snapshotUrl
+                                        : releaseServerId + "::default::" + releaseUrl),
                                 "-s", settingsPath.toAbsolutePath().toString()},
                         projectDir.toString(),
                         outPs,
@@ -158,11 +157,11 @@ public class ProtoBuildService {
 
             return groupId + ":" + artifactId + ":" + version;
         } catch (Exception e) {
-            log.error("", e);
+            log.error("Maven build/deploy failed", e);
+            throw e;
         } finally {
             deleteRecursively(projectDir);
         }
-        return "";
     }
 
     private String readTemplate(String path) throws IOException {

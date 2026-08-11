@@ -46,11 +46,7 @@ public class GrpcJsonSchemaGenerator {
 
                 Object requestTemplate;
                 try {
-                    Method getDefaultInstance = method.getRequestMarshaller().getClass()
-                            .getMethod("getDefaultInstance");
-                    Message defaultInstance = (Message) getDefaultInstance.invoke(
-                            method.getRequestMarshaller());
-                    requestTemplate = buildTemplate(defaultInstance);
+                    requestTemplate = buildTemplate(getDefaultInstance(method));
                 } catch (Exception e) {
                     log.warn("Failed to build template for {}", key, e);
                     requestTemplate = Map.of("_error", "Failed to introspect: " + e.getMessage());
@@ -61,6 +57,24 @@ public class GrpcJsonSchemaGenerator {
         }
 
         log.info("Generated {} gRPC request schemas", schemas.size());
+    }
+
+    /**
+     * Resolves the request message's default instance from the method's
+     * marshaller. grpc-java 1.28+ exposes {@code getMessagePrototype()};
+     * older versions expose {@code getDefaultInstance()}. The marshaller class
+     * is package-private, so the accessor must be made accessible explicitly.
+     */
+    private Message getDefaultInstance(io.grpc.MethodDescriptor<?, ?> method) throws Exception {
+        Object marshaller = method.getRequestMarshaller();
+        Method accessor;
+        try {
+            accessor = marshaller.getClass().getMethod("getMessagePrototype");
+        } catch (NoSuchMethodException e) {
+            accessor = marshaller.getClass().getMethod("getDefaultInstance");
+        }
+        accessor.setAccessible(true);
+        return (Message) accessor.invoke(marshaller);
     }
 
     private Object buildTemplate(Message message) {

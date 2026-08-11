@@ -2,7 +2,8 @@ package org.example.rpc.server;
 
 import com.google.protobuf.DescriptorProtos;
 import com.google.protobuf.Descriptors;
-import com.google.protobuf.UnknownFieldSet;
+import io.grpc.protobuf.ProtoFileDescriptorSupplier;
+import io.grpc.protobuf.ProtoServiceDescriptorSupplier;
 
 public final class AppIdReader {
 
@@ -25,19 +26,47 @@ public final class AppIdReader {
      * </pre>
      */
     public static String getAppId(io.grpc.ServiceDescriptor descriptor) {
-        Object schema = descriptor.getSchemaDescriptor();
-        if (!(schema instanceof Descriptors.ServiceDescriptor serviceSd)) {
+        Descriptors.ServiceDescriptor serviceSd = resolveServiceDescriptor(descriptor);
+        if (serviceSd == null) {
             throw new IllegalStateException(
                     "Service " + descriptor.getName() + " does not have a protobuf schema descriptor");
         }
         DescriptorProtos.ServiceOptions options = serviceSd.getOptions();
-        UnknownFieldSet ufs = options.getUnknownFields();
-        if (!ufs.hasField(APPID_FIELD_NUMBER)) {
-            throw new IllegalStateException(
-                    "app_id (field " + APPID_FIELD_NUMBER + ") not found in service options of "
-                            + serviceSd.getName()
-                            + ". Add 'option (app_id) = \"your-app-id\";' inside the service definition.");
+        // protoc stores the value as a registered extension of ServiceOptions.
+        Descriptors.FieldDescriptor appIdExtension = serviceSd.getFile().getExtensions().stream()
+                .filter(fd -> fd.getNumber() == APPID_FIELD_NUMBER)
+                .findFirst()
+                .orElse(null);
+        if (appIdExtension != null && options.hasField(appIdExtension)) {
+            return (String) options.getField(appIdExtension);
         }
-        return ufs.getField(APPID_FIELD_NUMBER).getLengthDelimitedList().get(0).toStringUtf8();
+
+        throw new IllegalStateException(
+                "app_id (field " + APPID_FIELD_NUMBER + ") not found in service options of "
+                        + serviceSd.getName()
+                        + ". Add 'option (app_id) = \"your-app-id\";' inside the service definition.");
+    }
+
+    /**
+     * grpc-java 1.28+ generated code stores the proto file descriptor supplier
+     * as the schema descriptor instead of the service descriptor directly, so
+     * resolve the descriptor through the supplier when needed.
+     */
+    private static Descriptors.ServiceDescriptor resolveServiceDescriptor(
+            io.grpc.ServiceDescriptor descriptor) {
+        Object schema = descriptor.getSchemaDescriptor();
+        if (schema instanceof Descriptors.ServiceDescriptor serviceSd) {
+            return serviceSd;
+        }
+        if (schema instanceof ProtoServiceDescriptorSupplier supplier) {
+            return supplier.getServiceDescriptor();
+        }
+        if (schema instanceof ProtoFileDescriptorSupplier supplier) {
+            Descriptors.FileDescriptor file = supplier.getFileDescriptor();
+            String name = descriptor.getName();
+            int idx = name.lastIndexOf('.');
+            return file.findServiceByName(idx >= 0 ? name.substring(idx + 1) : name);
+        }
+        return null;
     }
 }

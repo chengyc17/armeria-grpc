@@ -22,7 +22,7 @@
         <protobuf.version>3.25.1</protobuf.version>
         <grpc.version>1.59.0</grpc.version>
         <spring-boot.version>3.2.0</spring-boot.version>
-        <nacos-client.version>2.3.0</nacos-client.version>
+        <nacos-client.version>3.2.3</nacos-client.version>
     </properties>
 
     <dependencyManagement>
