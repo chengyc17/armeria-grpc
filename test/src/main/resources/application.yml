@@ -1,0 +1,8 @@
+rpc:
+  port: 18080
+  nacos:
+    server-addr: 127.0.0.1:8848
+    namespace: "fat"
+  client:
+    idc: local
+    group-name: grpc-test
