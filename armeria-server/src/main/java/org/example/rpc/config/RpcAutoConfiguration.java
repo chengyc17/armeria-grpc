@@ -96,11 +96,12 @@ public class RpcAutoConfiguration {
         String appId = null;
         for (Object bean : services.values()) {
             if (bean instanceof BindableService bindable) {
-                grpcServiceBuilder.addService(bindable);
                 if (appId == null) {
                     appId = AppIdReader.getAppId(
                             bindable.bindService().getServiceDescriptor());
                 }
+                // 用 /{appId}/api/{方法名} 替换默认的 /{包名.服务名}/{方法名} 路径
+                grpcServiceBuilder.addService("/" + appId + "/api", bindable);
             }
         }
 
