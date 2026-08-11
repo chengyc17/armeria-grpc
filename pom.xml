@@ -12,6 +12,7 @@
         <module>armeria-grpc-api</module>
         <module>armeria-server</module>
         <module>test</module>
+        <module>test2</module>
     </modules>
 
     <properties>

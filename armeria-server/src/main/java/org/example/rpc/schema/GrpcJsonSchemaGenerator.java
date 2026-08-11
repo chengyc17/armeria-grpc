@@ -6,6 +6,7 @@ import com.google.protobuf.Message;
 import io.grpc.BindableService;
 import org.example.rpc.annotation.GrpcService;
 import org.example.rpc.config.RpcProperties;
+import org.example.rpc.server.AppIdReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationContext;
@@ -39,10 +40,11 @@ public class GrpcJsonSchemaGenerator {
             if (!(bean instanceof BindableService bindable)) continue;
 
             io.grpc.ServiceDescriptor sd = bindable.bindService().getServiceDescriptor();
-            String serviceName = sd.getName();
+            // 服务端启动时已校验 app_id 存在，这里直接读取，无需兜底
+            String appId = AppIdReader.getAppId(sd);
 
             for (io.grpc.MethodDescriptor<?, ?> method : sd.getMethods()) {
-                String key = serviceName + "/api" + method.getBareMethodName();
+                String key = appId + "/api/" + method.getBareMethodName();
 
                 Object requestTemplate;
                 try {

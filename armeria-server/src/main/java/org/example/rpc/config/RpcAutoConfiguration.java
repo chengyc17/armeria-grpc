@@ -91,6 +91,9 @@ public class RpcAutoConfiguration {
         GrpcServiceBuilder grpcServiceBuilder = com.linecorp.armeria.server.grpc.GrpcService.builder()
                 .enableUnframedRequests(true)
                 .intercept(serverInterceptor);
+        GrpcServiceBuilder shortPathBuilder = com.linecorp.armeria.server.grpc.GrpcService.builder()
+                .enableUnframedRequests(true)
+                .intercept(serverInterceptor);
 
         // 服务端 appid 从 proto 文件的 option (appid) 读取，与客户端逻辑一致
         String appId = null;
@@ -100,8 +103,10 @@ public class RpcAutoConfiguration {
                     appId = AppIdReader.getAppId(
                             bindable.bindService().getServiceDescriptor());
                 }
-                // 用 /{appId}/api/{方法名} 替换默认的 /{包名.服务名}/{方法名} 路径
-                grpcServiceBuilder.addService("/" + appId + "/api", bindable);
+                // 保持默认 gRPC 路径 /{包名.服务名}/{方法名}，由下方 serviceUnder 挂到 /{appId}/api 前缀下
+                grpcServiceBuilder.addService(bindable);
+                // also serve the short path /{appId}/api/{MethodName} for HTTP/JSON access
+                shortPathBuilder.addService("/" + appId + "/api", bindable);
             }
         }
 
@@ -116,7 +121,8 @@ public class RpcAutoConfiguration {
 
         Server server = Server.builder()
                 .http(properties.getPort())
-                .service(grpcServiceBuilder.build())
+                .serviceUnder("/" + appId + "/api", grpcServiceBuilder.build())
+                .service(shortPathBuilder.build())
                 .service("/rpc/schema", schemaEndpoint)
                 .build();
 
