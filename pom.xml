@@ -13,6 +13,7 @@
         <module>armeria-server</module>
         <module>test</module>
         <module>test2</module>
+        <module>armeria-grpc-canary</module>
     </modules>
 
     <properties>
