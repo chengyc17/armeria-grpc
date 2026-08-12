@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>gRPC 接口测试控制台</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1160px;
+            margin: 0 auto;
+            padding: 32px 24px 48px;
+        }
+
+        .header { margin-bottom: 24px; }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 6px;
+        }
+
+        .header p { font-size: 13px; color: #777; }
+
+        .card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px 24px;
+            margin-bottom: 16px;
+        }
+
+        .row {
+            display: flex;
+            gap: 16px;
+            align-items: flex-end;
+        }
+
+        .row + .row { margin-top: 16px; }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex: 1;
+        }
+
+        .form-group.fixed { flex: 0 0 auto; }
+
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #555;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px 10px;
+            font-size: 14px;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            outline: none;
+            background: #fff;
+            font-family: inherit;
+            transition: border-color .15s, box-shadow .15s;
+        }
+
+        input[type="text"]:focus, select:focus {
+            border-color: #4a90d9;
+            box-shadow: 0 0 0 2px rgba(74, 144, 217, .15);
+        }
+
+        select:disabled { background: #f7f7f7; color: #999; }
+
+        button {
+            padding: 8px 18px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #fff;
+            background: #4a90d9;
+            border: 1px solid #3b7cc0;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background .15s;
+            font-family: inherit;
+        }
+
+        button:hover:not(:disabled) { background: #3b7cc0; }
+        button:disabled { background: #b8cfe8; border-color: #a9c3df; cursor: not-allowed; }
+
+        button.secondary {
+            color: #4a90d9;
+            background: #fff;
+            border-color: #4a90d9;
+        }
+
+        button.secondary:hover:not(:disabled) { background: #eef5fc; }
+
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            align-items: start;
+        }
+
+        .panel { min-height: 540px; display: flex; flex-direction: column; }
+
+        .panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .panel-head h2 { font-size: 15px; font-weight: 600; color: #1a1a1a; }
+
+        .panel-actions { display: flex; gap: 8px; align-items: center; }
+
+        .meta { font-size: 12px; color: #888; }
+
+        textarea {
+            flex: 1;
+            width: 100%;
+            min-height: 460px;
+            padding: 12px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            border: 1px solid #d0d0d0;
+            border-radius: 4px;
+            outline: none;
+            resize: vertical;
+            background: #fbfbfb;
+            color: #222;
+            white-space: pre;
+            overflow: auto;
+        }
+
+        textarea:focus { border-color: #4a90d9; box-shadow: 0 0 0 2px rgba(74, 144, 217, .15); }
+
+        textarea[readonly] { background: #f7f8fa; cursor: default; }
+
+        .error-bar {
+            background: #fdecea;
+            color: #b3261e;
+            border: 1px solid #f5c6c2;
+            border-radius: 6px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin-bottom: 16px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .hint {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 8px;
+        }
+
+        @media (max-width: 860px) {
+            .panels { grid-template-columns: 1fr; }
+            .row { flex-direction: column; align-items: stretch; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>gRPC 接口测试控制台</h1>
+        <p>输入 appid 从 Nacos 加载实例，选择实例与接口后编辑请求 JSON 发送，响应展示在右侧</p>
+    </div>
+
+    <div id="errorBar" class="error-bar" hidden></div>
+
+    <div class="card">
+        <div class="row">
+            <div class="form-group">
+                <label for="appId">AppID</label>
+                <input type="text" id="appId" placeholder="例如：user-service" autocomplete="off">
+            </div>
+            <div class="form-group fixed">
+                <button id="loadInstancesBtn">查询实例</button>
+            </div>
+        </div>
+        <div class="row">
+            <div class="form-group">
+                <label for="instanceSelect">实例</label>
+                <select id="instanceSelect" disabled>
+                    <option value="">请先输入 appid 并查询</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="methodSelect">接口</label>
+                <select id="methodSelect" disabled>
+                    <option value="">请先选择实例</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="panels">
+        <div class="card panel">
+            <div class="panel-head">
+                <h2>Request</h2>
+                <div class="panel-actions">
+                    <button id="formatBtn" class="secondary">格式化</button>
+                    <button id="sendBtn" disabled>发送请求</button>
+                </div>
+            </div>
+            <textarea id="requestBox" spellcheck="false"
+                      placeholder="选择接口后自动生成请求模板，修改后点击发送"></textarea>
+            <div class="hint" id="requestHint">接口选择后自动填充请求 JSON 模板</div>
+        </div>
+
+        <div class="card panel">
+            <div class="panel-head">
+                <h2>Response</h2>
+                <span class="meta" id="responseMeta"></span>
+            </div>
+            <textarea id="responseBox" readonly spellcheck="false"
+                      placeholder="响应会以 JSON 形式展示在这里"></textarea>
+        </div>
+    </div>
+</div>
+
+<script>
+    "use strict";
+
+    const $ = (id) => document.getElementById(id);
+    const state = { appId: "", host: "", port: 0, templates: {} };
+
+    $("loadInstancesBtn").addEventListener("click", loadInstances);
+    $("appId").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") loadInstances();
+    });
+    $("instanceSelect").addEventListener("change", loadMethods);
+    $("methodSelect").addEventListener("change", onMethodChange);
+    $("sendBtn").addEventListener("click", sendRequest);
+    $("formatBtn").addEventListener("click", formatRequest);
+
+    async function loadInstances() {
+        const appId = $("appId").value.trim();
+        if (!appId) {
+            showError("请输入 appid");
+            return;
+        }
+        hideError();
+        setButtonLoading("loadInstancesBtn", "查询中…", true);
+        try {
+            const data = await getJson("/api/test/instances?appId=" + encodeURIComponent(appId));
+            state.appId = appId;
+            const select = $("instanceSelect");
+            select.innerHTML = "";
+            if (data.length === 0) {
+                select.disabled = true;
+                select.appendChild(new Option("未找到该 appid 的实例", "", true, true));
+                $("methodSelect").disabled = true;
+                $("methodSelect").innerHTML = '<option value="">请先选择实例</option>';
+                $("requestBox").value = "";
+                $("responseBox").value = "";
+                $("responseMeta").textContent = "";
+                $("sendBtn").disabled = true;
+            } else {
+                data.forEach((instance) => {
+                    const label = instance.address +
+                        (instance.cluster ? " (" + instance.cluster + ")" : "");
+                    select.appendChild(new Option(label, instance.address, false, false));
+                });
+                select.disabled = false;
+                await loadMethods();
+            }
+        } catch (err) {
+            showError("加载实例失败: " + err.message);
+        } finally {
+            setButtonLoading("loadInstancesBtn", "查询实例", false);
+        }
+    }
+
+    async function loadMethods() {
+        const address = $("instanceSelect").value;
+        if (!address) return;
+        const split = splitAddress(address);
+        state.host = split.host;
+        state.port = split.port;
+        const select = $("methodSelect");
+        select.disabled = true;
+        select.innerHTML = '<option value="">加载接口中…</option>';
+        try {
+            const url = "/api/test/methods?appId=" + encodeURIComponent(state.appId) +
+                "&host=" + encodeURIComponent(state.host) + "&port=" + state.port;
+            const methods = await getJson(url);
+            select.innerHTML = "";
+            state.templates = {};
+            if (methods.length === 0) {
+                select.appendChild(new Option("该实例没有可用接口", "", true, true));
+                $("sendBtn").disabled = true;
+                $("requestBox").value = "";
+            } else {
+                methods.forEach((method) => {
+                    state.templates[method.method] = method.template;
+                    select.appendChild(new Option(method.method, method.method, false, false));
+                });
+                select.disabled = false;
+                select.value = methods[0].method;
+                onMethodChange();
+            }
+        } catch (err) {
+            showError("加载接口失败: " + err.message);
+        }
+    }
+
+    function onMethodChange() {
+        const method = $("methodSelect").value;
+        if (!method || !state.templates[method]) {
+            $("requestBox").value = "";
+            $("sendBtn").disabled = true;
+            return;
+        }
+        $("requestBox").value = JSON.stringify(state.templates[method], null, 2);
+        $("requestHint").textContent = "调用路径: /" + state.appId + "/api/" + method;
+        $("sendBtn").disabled = false;
+    }
+
+    function formatRequest() {
+        try {
+            $("requestBox").value = JSON.stringify(JSON.parse($("requestBox").value), null, 2);
+            hideError();
+        } catch (err) {
+            showError("Request JSON 不合法: " + err.message);
+        }
+    }
+
+    async function sendRequest() {
+        const method = $("methodSelect").value;
+        let parsed;
+        try {
+            parsed = JSON.parse($("requestBox").value.trim() || "{}");
+        } catch (err) {
+            showError("Request JSON 不合法: " + err.message);
+            return;
+        }
+        hideError();
+        $("responseBox").value = "";
+        $("responseMeta").textContent = "";
+        setButtonLoading("sendBtn", "发送中…", true);
+        try {
+            const payload = {
+                appId: state.appId,
+                host: state.host,
+                port: state.port,
+                method: method,
+                request: JSON.stringify(parsed)
+            };
+            const data = await postJson("/api/test/invoke", payload);
+            $("responseBox").value = renderBody(data.body);
+            const grpcStatus = data.headers ? data.headers["grpc-status"] : undefined;
+            let meta = "HTTP " + data.status + " · " + data.durationMs + "ms";
+            if (grpcStatus !== undefined) meta += " · grpc-status=" + grpcStatus;
+            $("responseMeta").textContent = meta;
+        } catch (err) {
+            showError("请求失败: " + err.message);
+        } finally {
+            setButtonLoading("sendBtn", "发送请求", false);
+        }
+    }
+
+    function renderBody(body) {
+        if (body === null || body === undefined) return "";
+        if (typeof body === "object") return JSON.stringify(body, null, 2);
+        try {
+            return JSON.stringify(JSON.parse(String(body)), null, 2);
+        } catch (e) {
+            return String(body);
+        }
+    }
+
+    async function getJson(url) {
+        const response = await fetch(url);
+        return readJson(response);
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+        return readJson(response);
+    }
+
+    async function readJson(response) {
+        let body = null;
+        try {
+            body = await response.json();
+        } catch (e) {
+            // ignore
+        }
+        if (!response.ok) {
+            const message = body && body.error ? body.error : "HTTP " + response.status;
+            throw new Error(message);
+        }
+        return body;
+    }
+
+    function splitAddress(address) {
+        const idx = address.lastIndexOf(":");
+        let host = address.substring(0, idx);
+        const port = parseInt(address.substring(idx + 1), 10);
+        if (host.startsWith("[") && host.endsWith("]")) {
+            host = host.substring(1, host.length - 1);
+        }
+        return { host: host, port: port };
+    }
+
+    function setButtonLoading(id, text, disabled) {
+        const button = $(id);
+        button.textContent = text;
+        button.disabled = disabled;
+    }
+
+    function showError(message) {
+        const bar = $("errorBar");
+        bar.textContent = message;
+        bar.hidden = false;
+    }
+
+    function hideError() {
+        $("errorBar").hidden = true;
+    }
+</script>
+</body>
+</html>

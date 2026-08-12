@@ -1,0 +1,13 @@
+server:
+  port: 9081
+
+spring:
+  application:
+    name: grpc-test-console
+
+test-console:
+  nacos:
+    # 与 test/test2 模块保持一致，实例注册在 fat 命名空间
+    server-addr: 127.0.0.1:8848
+    namespace: "fat"
+    group: DEFAULT_GROUP
