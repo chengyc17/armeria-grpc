@@ -11,18 +11,11 @@
 
     <artifactId>test</artifactId>
 
-    <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
     <dependencies>
         <!-- proto 编译产物，提供 UserService 的 gRPC stub 与消息类 -->
         <dependency>
             <groupId>com.abc.eee</groupId>
             <artifactId>mywork-demo</artifactId>
-            <version>1.0.10-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.example</groupId>
@@ -36,7 +29,6 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring-boot.version}</version>
                 <executions>
                     <execution>
                         <goals>

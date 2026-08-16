@@ -27,11 +27,12 @@ server:
 test-console:
   nacos:
     server-addr: 127.0.0.1:8848
-    namespace: "fat"
+    namespace: "${env}"
     group: DEFAULT_GROUP
 ```
 
-与 `test`/`test2` 模块一致，实例注册在 `fat` 命名空间。
+与 `test`/`test2` 模块一致。环境值不写死，从本机 ops 目录的 `env.properties` 读取
+（Windows：`C:\ops\env.properties`；Linux：`~/ops/env.properties`），`${env}` 即其中的 `env` 值。
 
 ## 运行
 

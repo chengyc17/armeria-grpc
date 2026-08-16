@@ -2,7 +2,8 @@ rpc:
   port: 18081
   nacos:
     server-addr: 127.0.0.1:8848
-    namespace: "fat"
+    # 环境值从本机 ops 目录 env.properties 读取（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
+    namespace: "${env}"
   client:
     idc: local
     group-name: grpc-test

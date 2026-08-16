@@ -1,7 +1,6 @@
 package org.example.rpc.client;
 
 import com.alibaba.nacos.api.naming.NamingService;
-import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import com.linecorp.armeria.client.grpc.GrpcClients;
 import io.grpc.ServiceDescriptor;
@@ -115,13 +114,11 @@ public class GrpcClientBeanPostProcessor implements BeanPostProcessor {
 
             // 订阅 Nacos 变更通知，服务上下线时重建 stub 并刷新已注入的字段
             namingService.subscribe(serviceName, event -> {
-                if (event instanceof NamingEvent) {
-                    log.info("Nacos instances changed for {}, refreshing stub", serviceName);
-                    try {
-                        refresh();
-                    } catch (Exception e) {
-                        log.error("Failed to refresh stub for {}", serviceName, e);
-                    }
+                log.info("Nacos instances changed for {}, refreshing stub", serviceName);
+                try {
+                    refresh();
+                } catch (Exception e) {
+                    log.error("Failed to refresh stub for {}", serviceName, e);
                 }
             });
         }

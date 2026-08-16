@@ -7,7 +7,7 @@ spring:
 
 test-console:
   nacos:
-    # 与 test/test2 模块保持一致，实例注册在 fat 命名空间
+    # 环境值从本机 ops 目录 env.properties 读取（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
     server-addr: 127.0.0.1:8848
-    namespace: "fat"
+    namespace: "${env}"
     group: DEFAULT_GROUP

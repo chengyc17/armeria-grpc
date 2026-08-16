@@ -14,6 +14,9 @@
         <module>test</module>
         <module>test2</module>
         <module>armeria-grpc-canary</module>
+        <module>armeria-grpc-gateway</module>
+        <module>armeria-grpc-config</module>
+        <module>armeria-grpc-common</module>
     </modules>
 
     <properties>
@@ -25,6 +28,17 @@
         <grpc.version>1.59.0</grpc.version>
         <spring-boot.version>3.2.0</spring-boot.version>
         <nacos-client.version>3.2.3</nacos-client.version>
+        <!-- 测试与构建插件版本 -->
+        <junit-jupiter.version>5.10.3</junit-jupiter.version>
+        <maven-compiler-plugin.version>3.11.0</maven-compiler-plugin.version>
+        <maven-surefire-plugin.version>3.2.5</maven-surefire-plugin.version>
+        <!-- armeria-grpc-api 内嵌 Maven 相关版本 -->
+        <maven-embedder.version>3.8.6</maven-embedder.version>
+        <maven-resolver.version>1.7.3</maven-resolver.version>
+        <maven-wagon.version>3.5.3</maven-wagon.version>
+        <!-- 外部依赖版本 -->
+        <mywork-demo.version>1.0.10-SNAPSHOT</mywork-demo.version>
+        <mywork-demo2.version>1.0.99-SNAPSHOT</mywork-demo2.version>
     </properties>
 
     <dependencyManagement>
@@ -56,7 +70,91 @@
                 <scope>import</scope>
             </dependency>
 
+            <!-- 项目统一管理的依赖版本 -->
+            <dependency>
+                <groupId>com.alibaba.nacos</groupId>
+                <artifactId>nacos-client</artifactId>
+                <version>${nacos-client.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.abc.eee</groupId>
+                <artifactId>mywork-demo</artifactId>
+                <version>${mywork-demo.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.abc.eee</groupId>
+                <artifactId>mywork-demo2</artifactId>
+                <version>${mywork-demo2.version}</version>
+            </dependency>
+            <!-- 覆盖 spring-boot-dependencies 内 junit-bom 的默认版本（5.10.1 -> 5.10.3） -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit-jupiter.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.protobuf</groupId>
+                <artifactId>protobuf-java</artifactId>
+                <version>${protobuf.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven</groupId>
+                <artifactId>maven-embedder</artifactId>
+                <version>${maven-embedder.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven</groupId>
+                <artifactId>maven-core</artifactId>
+                <version>${maven-embedder.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven</groupId>
+                <artifactId>maven-compat</artifactId>
+                <version>${maven-embedder.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven.resolver</groupId>
+                <artifactId>maven-resolver-connector-basic</artifactId>
+                <version>${maven-resolver.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven.resolver</groupId>
+                <artifactId>maven-resolver-transport-http</artifactId>
+                <version>${maven-resolver.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven.wagon</groupId>
+                <artifactId>wagon-http</artifactId>
+                <version>${maven-wagon.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.maven.wagon</groupId>
+                <artifactId>wagon-provider-api</artifactId>
+                <version>${maven-wagon.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>${maven-compiler-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>${maven-surefire-plugin.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
 
 </project>

@@ -4,6 +4,7 @@ import com.google.protobuf.Descriptors;
 import com.google.protobuf.DynamicMessage;
 import com.google.protobuf.Message;
 import io.grpc.BindableService;
+import io.grpc.MethodDescriptor;
 import org.example.rpc.annotation.GrpcService;
 import org.example.rpc.config.RpcProperties;
 import org.example.rpc.server.AppIdReader;
@@ -13,7 +14,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 
-import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -62,21 +62,18 @@ public class GrpcJsonSchemaGenerator {
     }
 
     /**
-     * Resolves the request message's default instance from the method's
-     * marshaller. grpc-java 1.28+ exposes {@code getMessagePrototype()};
-     * older versions expose {@code getDefaultInstance()}. The marshaller class
-     * is package-private, so the accessor must be made accessible explicitly.
+     * Returns the request message's default instance from the method's
+     * marshaller. Generated gRPC stubs use {@link MethodDescriptor.PrototypeMarshaller},
+     * so the prototype is available directly without reflection.
      */
-    private Message getDefaultInstance(io.grpc.MethodDescriptor<?, ?> method) throws Exception {
+    private Message getDefaultInstance(io.grpc.MethodDescriptor<?, ?> method) {
         Object marshaller = method.getRequestMarshaller();
-        Method accessor;
-        try {
-            accessor = marshaller.getClass().getMethod("getMessagePrototype");
-        } catch (NoSuchMethodException e) {
-            accessor = marshaller.getClass().getMethod("getDefaultInstance");
+        if (!(marshaller instanceof MethodDescriptor.PrototypeMarshaller<?> prototypeMarshaller)) {
+            throw new IllegalStateException(
+                    "Request marshaller " + marshaller.getClass().getName()
+                            + " does not expose the message prototype");
         }
-        accessor.setAccessible(true);
-        return (Message) accessor.invoke(marshaller);
+        return (Message) prototypeMarshaller.getMessagePrototype();
     }
 
     private Object buildTemplate(Message message) {

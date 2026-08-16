@@ -2,7 +2,6 @@ package org.example.rpc.server;
 
 import com.google.protobuf.DescriptorProtos;
 import com.google.protobuf.Descriptors;
-import io.grpc.protobuf.ProtoFileDescriptorSupplier;
 import io.grpc.protobuf.ProtoServiceDescriptorSupplier;
 
 public final class AppIdReader {
@@ -26,11 +25,14 @@ public final class AppIdReader {
      * </pre>
      */
     public static String getAppId(io.grpc.ServiceDescriptor descriptor) {
-        Descriptors.ServiceDescriptor serviceSd = resolveServiceDescriptor(descriptor);
-        if (serviceSd == null) {
+        Object schema = descriptor.getSchemaDescriptor();
+        if (!(schema instanceof ProtoServiceDescriptorSupplier supplier)) {
             throw new IllegalStateException(
-                    "Service " + descriptor.getName() + " does not have a protobuf schema descriptor");
+                    "Service " + descriptor.getName() + " does not provide a protobuf service descriptor: "
+                            + schema);
         }
+        Descriptors.ServiceDescriptor serviceSd = supplier.getServiceDescriptor();
+
         DescriptorProtos.ServiceOptions options = serviceSd.getOptions();
         // protoc stores the value as a registered extension of ServiceOptions.
         Descriptors.FieldDescriptor appIdExtension = serviceSd.getFile().getExtensions().stream()
@@ -45,28 +47,5 @@ public final class AppIdReader {
                 "app_id (field " + APPID_FIELD_NUMBER + ") not found in service options of "
                         + serviceSd.getName()
                         + ". Add 'option (app_id) = \"your-app-id\";' inside the service definition.");
-    }
-
-    /**
-     * grpc-java 1.28+ generated code stores the proto file descriptor supplier
-     * as the schema descriptor instead of the service descriptor directly, so
-     * resolve the descriptor through the supplier when needed.
-     */
-    private static Descriptors.ServiceDescriptor resolveServiceDescriptor(
-            io.grpc.ServiceDescriptor descriptor) {
-        Object schema = descriptor.getSchemaDescriptor();
-        if (schema instanceof Descriptors.ServiceDescriptor serviceSd) {
-            return serviceSd;
-        }
-        if (schema instanceof ProtoServiceDescriptorSupplier supplier) {
-            return supplier.getServiceDescriptor();
-        }
-        if (schema instanceof ProtoFileDescriptorSupplier supplier) {
-            Descriptors.FileDescriptor file = supplier.getFileDescriptor();
-            String name = descriptor.getName();
-            int idx = name.lastIndexOf('.');
-            return file.findServiceByName(idx >= 0 ? name.substring(idx + 1) : name);
-        }
-        return null;
     }
 }

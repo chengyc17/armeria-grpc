@@ -9,6 +9,12 @@
     <file url="file://$PROJECT_DIR$/armeria-grpc-api/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-canary/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-canary/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-gateway/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-server/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-server/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
