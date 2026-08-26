@@ -1,6 +1,7 @@
 package org.example.rpc.governance;
 
 import com.linecorp.armeria.client.circuitbreaker.CircuitBreaker;
+import com.linecorp.armeria.client.circuitbreaker.CircuitBreakerBuilder;
 import org.example.config.AppConfigChangedEvent;
 import org.example.config.AppConfigService;
 import org.slf4j.Logger;
@@ -9,36 +10,39 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
 
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * 服务治理配置管理：从 Nacos（config 模块）读取 soa.json，
  * 启动时加载、变更后热更新，并把配置应用到限流/熔断/黑白名单。
+ * <p>
+ * 只认 soa.json 中的配置；soa.json 未配置的功能不生效：不限流、不熔断、黑白名单为空全部放行。
  */
 public class GovernanceConfigManager {
 
     private static final Logger log = LoggerFactory.getLogger(GovernanceConfigManager.class);
     private static final String CIRCUIT_BREAKER_NAME = "rpc-governance";
 
-    private final RpcGovernanceProperties properties;
     private final ObjectProvider<AppConfigService> configProvider;
     private final String appId;
     private final SoaConfigParser parser = new SoaConfigParser();
 
     private volatile SoaConfig config;
     private volatile CircuitBreaker circuitBreaker;
-    private volatile IpMatcher blacklist;
-    private volatile IpMatcher whitelist;
+    private volatile Set<String> blacklist;
+    private volatile Set<String> whitelist;
     private volatile TokenBucket globalBucket;
     private final ConcurrentHashMap<String, TokenBucket> interfaceBuckets = new ConcurrentHashMap<>();
 
-    public GovernanceConfigManager(RpcGovernanceProperties properties,
-                                   ObjectProvider<AppConfigService> configProvider,
+    public GovernanceConfigManager(ObjectProvider<AppConfigService> configProvider,
                                    String appId) {
-        this.properties = properties;
         this.configProvider = configProvider;
         this.appId = appId;
-        apply(parser.baseline(properties));
+        apply(parser.empty());
     }
 
     /**
@@ -59,9 +63,10 @@ public class GovernanceConfigManager {
 
     public synchronized void reload() {
         AppConfigService appConfig = configProvider.getIfAvailable();
-        String content = appConfig == null ? null : appConfig.getRawConfig();
+        // 服务治理配置只认 Nacos 配置中心的 soa.json；未配置或拉取不到时保持空配置（全部放行）
+        String content = appConfig == null ? null : appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID);
         try {
-            SoaConfig next = parser.parse(content, appId, properties);
+            SoaConfig next = parser.parse(content, appId);
             apply(next);
             log.info("Governance config applied. appId={}, rateLimit(enabled={}, qps={}), interfaces={}, "
                             + "circuitBreaker(enabled={}), blacklist={}, whitelist={}",
@@ -78,28 +83,49 @@ public class GovernanceConfigManager {
                 ? new TokenBucket(next.rateLimitQps()) : null;
         interfaceBuckets.clear();
         circuitBreaker = next.circuitBreakerEnabled() ? buildCircuitBreaker(next.circuitBreaker()) : null;
-        blacklist = new IpMatcher(next.blacklist());
-        whitelist = new IpMatcher(next.whitelist());
+        blacklist = toAppIdSet(next.blacklist());
+        whitelist = toAppIdSet(next.whitelist());
+    }
+
+    /** appId 精确匹配集合：忽略空白项，统一 trim + 小写，配置大小写不敏感 */
+    private static Set<String> toAppIdSet(List<String> appIds) {
+        return appIds.stream()
+                .filter(id -> id != null && !id.isBlank())
+                .map(id -> id.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     private static CircuitBreaker buildCircuitBreaker(CircuitBreakerSettings settings) {
-        return CircuitBreaker.builder(CIRCUIT_BREAKER_NAME)
-                .failureRateThreshold(settings.failureRateThreshold())
-                .minimumRequestThreshold(settings.minimumRequestThreshold())
-                .circuitOpenWindowMillis(settings.circuitOpenWindowMillis())
-                .trialRequestIntervalMillis(settings.trialRequestIntervalMillis())
-                .counterSlidingWindowMillis(settings.counterSlidingWindowMillis())
-                .build();
+        CircuitBreakerBuilder builder = CircuitBreaker.builder(CIRCUIT_BREAKER_NAME);
+        // 未配置的字段不设置，使用 Armeria CircuitBreakerBuilder 的默认值
+        if (settings.failureRateThreshold() != null) {
+            builder.failureRateThreshold(settings.failureRateThreshold());
+        }
+        if (settings.minimumRequestThreshold() != null) {
+            builder.minimumRequestThreshold(settings.minimumRequestThreshold());
+        }
+        if (settings.circuitOpenWindowMillis() != null) {
+            builder.circuitOpenWindowMillis(settings.circuitOpenWindowMillis());
+        }
+        if (settings.trialRequestIntervalMillis() != null) {
+            builder.trialRequestIntervalMillis(settings.trialRequestIntervalMillis());
+        }
+        if (settings.counterSlidingWindowMillis() != null) {
+            builder.counterSlidingWindowMillis(settings.counterSlidingWindowMillis());
+        }
+        return builder.build();
     }
 
     /**
-     * 黑白名单校验：命中黑名单拒绝；白名单非空时仅白名单放行。
+     * 黑白名单校验（匹配维度：调用方 appId，随请求的 x-client-app-id 头传入）：
+     * 命中黑名单拒绝；白名单非空时仅白名单放行（未携带 appId 的调用方不在白名单内，同样拒绝）。
      */
-    public boolean isIpAllowed(String ip) {
-        if (blacklist.matches(ip)) {
+    public boolean isAppIdAllowed(String appId) {
+        if (appId != null && blacklist.contains(appId.trim().toLowerCase(Locale.ROOT))) {
             return false;
         }
-        return whitelist.isEmpty() || whitelist.matches(ip);
+        return whitelist.isEmpty()
+                || (appId != null && whitelist.contains(appId.trim().toLowerCase(Locale.ROOT)));
     }
 
     /**
@@ -134,6 +160,13 @@ public class GovernanceConfigManager {
     public boolean tryAcquireCircuitBreaker() {
         CircuitBreaker breaker = circuitBreaker;
         return breaker == null || breaker.tryRequest();
+    }
+
+    /**
+     * 熔断器是否已启用（启用时才需要在调用结束后上报结果）。
+     */
+    public boolean isCircuitBreakerEnabled() {
+        return circuitBreaker != null;
     }
 
     /**

@@ -11,12 +11,12 @@
     <modules>
         <module>armeria-grpc-api</module>
         <module>armeria-server</module>
-        <module>test</module>
-        <module>test2</module>
         <module>armeria-grpc-canary</module>
         <module>armeria-grpc-gateway</module>
         <module>armeria-grpc-config</module>
         <module>armeria-grpc-common</module>
+        <module>example-server</module>
+        <module>example-client</module>
     </modules>
 
     <properties>

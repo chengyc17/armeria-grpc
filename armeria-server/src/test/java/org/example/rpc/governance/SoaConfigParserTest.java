@@ -6,11 +6,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SoaConfigParserTest {
-
-    private final RpcGovernanceProperties baseline = new RpcGovernanceProperties();
 
     @Test
     void mergesGlobalAndAppIdSections() {
@@ -38,16 +37,16 @@ class SoaConfigParserTest {
                 }
                 """;
 
-        SoaConfig config = new SoaConfigParser().parse(json, "user-service", baseline);
+        SoaConfig config = new SoaConfigParser().parse(json, "user-service");
 
         assertTrue(config.rateLimitEnabled());
         assertEquals(5000, config.rateLimitQps());
         assertEquals(1000, config.interfaceRateLimits().get("com.example.UserService/GetUser"));
         assertEquals(500, config.interfaceRateLimits().get("CreateUser"));
         assertTrue(config.circuitBreakerEnabled());
-        assertEquals(0.3, config.circuitBreaker().failureRateThreshold());
-        assertEquals(5, config.circuitBreaker().minimumRequestThreshold());
-        assertEquals(8000, config.circuitBreaker().circuitOpenWindowMillis());
+        assertEquals(0.3, config.circuitBreaker().failureRateThreshold().doubleValue());
+        assertEquals(5L, config.circuitBreaker().minimumRequestThreshold().longValue());
+        assertEquals(8000L, config.circuitBreaker().circuitOpenWindowMillis().longValue());
         assertEquals(List.of("1.2.3.4", "10.0.0.0/8"), config.blacklist());
         assertEquals(List.of("10.0.0.0/8"), config.whitelist());
     }
@@ -62,7 +61,7 @@ class SoaConfigParserTest {
                 }
                 """;
 
-        SoaConfig config = new SoaConfigParser().parse(json, "user-service", baseline);
+        SoaConfig config = new SoaConfigParser().parse(json, "user-service");
 
         assertEquals(3000, config.rateLimitQps());
         assertEquals(100, config.interfaceRateLimits().get("GetUser"));
@@ -70,15 +69,36 @@ class SoaConfigParserTest {
     }
 
     @Test
-    void returnsBaselineWhenSoaJsonMissing() {
-        SoaConfig config = new SoaConfigParser().parse(null, "user-service", baseline);
+    void allGovernanceDisabledWhenSoaJsonMissing() {
+        // soa.json 缺失时不限流、不熔断、名单为空
+        SoaConfig config = new SoaConfigParser().parse(null, "user-service");
 
-        assertTrue(config.rateLimitEnabled());
-        assertEquals(10_000, config.rateLimitQps());
-        assertTrue(config.circuitBreakerEnabled());
-        assertEquals(0.5, config.circuitBreaker().failureRateThreshold());
+        assertFalse(config.rateLimitEnabled());
+        assertEquals(-1, config.rateLimitQps());
+        assertFalse(config.circuitBreakerEnabled());
+        assertNull(config.circuitBreaker().failureRateThreshold());
+        assertNull(config.circuitBreaker().circuitOpenWindowMillis());
         assertTrue(config.blacklist().isEmpty());
         assertTrue(config.whitelist().isEmpty());
+    }
+
+    @Test
+    void missingCircuitBreakerFieldsStayNull() {
+        // soa.json 只配置了部分熔断参数，未配置的字段保持 null（构建时用 Armeria 默认值）
+        String json = """
+                {
+                  "circuitBreaker": { "failureRateThreshold": 0.3 }
+                }
+                """;
+
+        SoaConfig config = new SoaConfigParser().parse(json, "user-service");
+
+        assertTrue(config.circuitBreakerEnabled());
+        assertEquals(0.3, config.circuitBreaker().failureRateThreshold().doubleValue());
+        assertNull(config.circuitBreaker().minimumRequestThreshold());
+        assertNull(config.circuitBreaker().circuitOpenWindowMillis());
+        assertNull(config.circuitBreaker().trialRequestIntervalMillis());
+        assertNull(config.circuitBreaker().counterSlidingWindowMillis());
     }
 
     @Test
@@ -90,7 +110,7 @@ class SoaConfigParserTest {
                 }
                 """;
 
-        SoaConfig config = new SoaConfigParser().parse(json, "user-service", baseline);
+        SoaConfig config = new SoaConfigParser().parse(json, "user-service");
 
         assertFalse(config.rateLimitEnabled());
         assertFalse(config.circuitBreakerEnabled());
@@ -104,17 +124,7 @@ class SoaConfigParserTest {
                 }
                 """;
 
-        SoaConfig config = new SoaConfigParser().parse(json, "user-service", baseline);
-
-        assertFalse(config.rateLimitEnabled());
-    }
-
-    @Test
-    void baselineQpsMinusOneDisablesRateLimit() {
-        RpcGovernanceProperties noLimit = new RpcGovernanceProperties();
-        noLimit.setBaselineRateLimitQps(-1);
-
-        SoaConfig config = new SoaConfigParser().parse(null, "user-service", noLimit);
+        SoaConfig config = new SoaConfigParser().parse(json, "user-service");
 
         assertFalse(config.rateLimitEnabled());
     }

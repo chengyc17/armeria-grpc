@@ -26,10 +26,7 @@ public final class GrpcServices {
      */
     public static BindableService requireSingle(ApplicationContext context) {
         Map<String, Object> services = context.getBeansWithAnnotation(GrpcService.class);
-        List<BindableService> grpcServices = services.values().stream()
-                .filter(BindableService.class::isInstance)
-                .map(BindableService.class::cast)
-                .toList();
+        List<BindableService> grpcServices = findBindableServices(context);
 
         if (services.isEmpty()) {
             throw new IllegalStateException(
@@ -60,5 +57,26 @@ public final class GrpcServices {
      */
     public static String resolveAppId(ApplicationContext context) {
         return AppIdReader.getAppId(requireSingle(context).bindService().getServiceDescriptor());
+    }
+
+    /**
+     * {@link #resolveAppId} 的宽松版本：本进程未提供任何 gRPC 服务（纯客户端进程）时返回
+     * {@code null} 而不是抛异常，供客户端上下文等场景兜底使用。
+     *
+     * @throws IllegalStateException 存在多个 @GrpcService 实现
+     */
+    public static String findAppId(ApplicationContext context) {
+        if (findBindableServices(context).isEmpty()) {
+            return null;
+        }
+        return resolveAppId(context);
+    }
+
+    private static List<BindableService> findBindableServices(ApplicationContext context) {
+        Map<String, Object> services = context.getBeansWithAnnotation(GrpcService.class);
+        return services.values().stream()
+                .filter(BindableService.class::isInstance)
+                .map(BindableService.class::cast)
+                .toList();
     }
 }

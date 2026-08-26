@@ -83,6 +83,12 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- 端到端测试用原生 gRPC 客户端（shaded netty，与 Armeria 服务端互不影响） -->
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

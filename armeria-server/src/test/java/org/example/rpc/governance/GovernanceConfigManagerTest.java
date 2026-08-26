@@ -15,45 +15,80 @@ class GovernanceConfigManagerTest {
     @Test
     void reloadAppliesSoaJson() {
         AppConfigService appConfig = mock(AppConfigService.class);
-        when(appConfig.getRawConfig())
-                .thenReturn("{\"rateLimit\":{\"qps\":3000},\"blacklist\":[\"1.2.3.4\"]}");
+        when(appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID))
+                .thenReturn("{\"rateLimit\":{\"qps\":3000},\"blacklist\":[\"order-service\"]}");
         ObjectProvider<AppConfigService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(appConfig);
 
-        GovernanceConfigManager manager = new GovernanceConfigManager(
-                new RpcGovernanceProperties(), provider, "user-service");
+        GovernanceConfigManager manager = new GovernanceConfigManager(provider, "user-service");
         manager.reload();
 
         assertEquals(3000, manager.getConfig().rateLimitQps());
-        assertFalse(manager.isIpAllowed("1.2.3.4"));
-        assertTrue(manager.isIpAllowed("2.2.2.2"));
+        assertFalse(manager.isAppIdAllowed("order-service"));
+        assertTrue(manager.isAppIdAllowed("web-front"));
     }
 
     @Test
-    void keepsBaselineWhenConfigMissing() {
+    void appIdMatchIsCaseInsensitiveAndTrimmed() {
         AppConfigService appConfig = mock(AppConfigService.class);
-        when(appConfig.getRawConfig()).thenReturn(null);
+        when(appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID))
+                .thenReturn("{\"blacklist\":[\" Order-Service \"]}");
         ObjectProvider<AppConfigService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(appConfig);
 
-        GovernanceConfigManager manager = new GovernanceConfigManager(
-                new RpcGovernanceProperties(), provider, "user-service");
+        GovernanceConfigManager manager = new GovernanceConfigManager(provider, "user-service");
         manager.reload();
 
-        assertEquals(10_000, manager.getConfig().rateLimitQps());
-        assertTrue(manager.isIpAllowed("1.1.1.1"));
+        assertFalse(manager.isAppIdAllowed("ORDER-SERVICE"));
+        assertFalse(manager.isAppIdAllowed("order-service"));
+        assertTrue(manager.isAppIdAllowed("other-app"));
+    }
+
+    @Test
+    void whitelistDeniesUnknownAndMissingAppId() {
+        AppConfigService appConfig = mock(AppConfigService.class);
+        when(appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID))
+                .thenReturn("{\"whitelist\":[\"web-front\",\"mobile-api\"]}");
+        ObjectProvider<AppConfigService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(appConfig);
+
+        GovernanceConfigManager manager = new GovernanceConfigManager(provider, "user-service");
+        manager.reload();
+
+        assertTrue(manager.isAppIdAllowed("web-front"));
+        assertFalse(manager.isAppIdAllowed("unknown-app"));
+        // 未携带 appId 的调用方不在白名单内，同样拒绝
+        assertFalse(manager.isAppIdAllowed(null));
+    }
+
+    @Test
+    void noGovernanceWhenConfigMissing() {
+        // soa.json 缺失：不限流、不熔断、名单为空，全部放行
+        AppConfigService appConfig = mock(AppConfigService.class);
+        when(appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID)).thenReturn(null);
+        ObjectProvider<AppConfigService> provider = mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(appConfig);
+
+        GovernanceConfigManager manager = new GovernanceConfigManager(provider, "user-service");
+        manager.reload();
+
+        assertFalse(manager.getConfig().rateLimitEnabled());
+        assertEquals(-1, manager.getConfig().rateLimitQps());
+        assertTrue(manager.isAppIdAllowed("any-app"));
+        assertTrue(manager.isAppIdAllowed(null));
+        assertTrue(manager.tryAcquire("com.example.UserService/GetUser", "GetUser"));
+        assertTrue(manager.tryAcquireCircuitBreaker());
     }
 
     @Test
     void enforcesInterfaceRateLimit() {
         AppConfigService appConfig = mock(AppConfigService.class);
-        when(appConfig.getRawConfig())
+        when(appConfig.getRawConfig(AppConfigService.SOA_CONFIG_DATA_ID))
                 .thenReturn("{\"rateLimit\":{\"qps\":100},\"interfaces\":{\"GetUser\":1}}");
         ObjectProvider<AppConfigService> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(appConfig);
 
-        GovernanceConfigManager manager = new GovernanceConfigManager(
-                new RpcGovernanceProperties(), provider, "user-service");
+        GovernanceConfigManager manager = new GovernanceConfigManager(provider, "user-service");
         manager.reload();
 
         assertTrue(manager.tryAcquire("com.example.UserService/GetUser", "GetUser"));

@@ -1,32 +1,61 @@
 package org.example.rpc.context;
 
+import com.linecorp.armeria.common.RequestContext;
+import io.netty.util.AttributeKey;
+
 /**
- * Stores the current {@link ClientContext} in an {@link InheritableThreadLocal}
- * so it is available throughout the call chain, including in child threads.
+ * Provides access to the {@link ClientContext} of the RPC call currently being served.
+ *
+ * <p>The context is stored as an attribute of Armeria's {@link RequestContext}, so it:
+ * <ul>
+ *   <li>lives exactly as long as the request — no leakage between calls served by the
+ *       same event loop thread (the classic {@code ThreadLocal} hazard);</li>
+ *   <li>is visible wherever the request context is current, i.e. on the event loop and
+ *       in Armeria-managed executors such as {@code ServiceRequestContext.blockingTaskExecutor()}
+ *       or executors wrapped with {@link RequestContext#makeContextPropagating}.</li>
+ * </ul>
  *
  * <p>Usage on the server side:
  * <pre>{@code
  * ClientContext ctx = ClientContextHolder.get();
  * }</pre>
+ *
+ * <p>When dispatching to your own thread pool, keep the request context attached, e.g.:
+ * <pre>{@code
+ * ServiceRequestContext ctx = ServiceRequestContext.current();
+ * executor.submit(ctx.makeContextAware(() -> {
+ *     ClientContextHolder.get(); // still available
+ * }));
+ * }</pre>
  */
-public class ClientContextHolder {
+public final class ClientContextHolder {
 
-    private static final InheritableThreadLocal<ClientContext> CONTEXT = new InheritableThreadLocal<>();
+    private static final AttributeKey<ClientContext> KEY =
+            AttributeKey.valueOf(ClientContext.class.getName());
 
     private ClientContextHolder() {}
 
-    /** Set the context for the current thread (and its future children). */
-    protected static void set(ClientContext ctx) {
-        CONTEXT.set(ctx);
+    /**
+     * Attaches the context to the current Armeria request.
+     *
+     * @return {@code true} if attached, {@code false} if no {@link RequestContext} is
+     *         active on the current thread (the caller is not inside an Armeria request).
+     */
+    static boolean set(ClientContext ctx) {
+        RequestContext reqCtx = RequestContext.currentOrNull();
+        if (reqCtx == null) {
+            return false;
+        }
+        reqCtx.setAttr(KEY, ctx);
+        return true;
     }
 
-    /** Get the context for the current thread, or {@code null} if none set. */
+    /**
+     * Get the context of the request being served, or {@code null} if none is attached
+     * (not inside an Armeria request, or the call had no client context metadata).
+     */
     public static ClientContext get() {
-        return CONTEXT.get();
-    }
-
-    /** Remove the context from the current thread. */
-    public static void clear() {
-        CONTEXT.remove();
+        RequestContext reqCtx = RequestContext.currentOrNull();
+        return reqCtx == null ? null : reqCtx.attr(KEY);
     }
 }

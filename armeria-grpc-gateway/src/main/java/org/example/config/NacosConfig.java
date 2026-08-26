@@ -5,6 +5,7 @@ import com.alibaba.nacos.api.naming.NamingService;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 
 import java.util.Properties;
 
@@ -16,13 +17,10 @@ import java.util.Properties;
 public class NacosConfig {
 
     @Bean(destroyMethod = "shutDown")
-    public NamingService namingService(GatewayProperties properties) throws Exception {
+    public NamingService namingService(GatewayProperties properties, Environment environment) throws Exception {
         Properties props = new Properties();
         props.setProperty("serverAddr", properties.getNacos().getServerAddr());
-        String namespace = properties.getNacos().getNamespace();
-        if (namespace != null && !namespace.isBlank()) {
-            props.setProperty("namespace", namespace);
-        }
+        props.setProperty("namespace", environment.getProperty("env"));
         return NamingFactory.createNamingService(props);
     }
 }

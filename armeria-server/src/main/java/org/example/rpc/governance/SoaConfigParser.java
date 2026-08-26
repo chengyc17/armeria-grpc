@@ -17,7 +17,7 @@ import java.util.Map;
  *   "global": {
  *     "rateLimit": { "enabled": true, "qps": 20000 },
  *     "circuitBreaker": { "enabled": true, "failureRateThreshold": 0.3, ... },
- *     "blacklist": ["1.2.3.4", "10.0.0.0/8"],
+ *     "blacklist": ["order-service", "legacy-caller"],
  *     "whitelist": []
  *   },
  *   "&lt;appId&gt;": {
@@ -31,16 +31,20 @@ import java.util.Map;
  *   }
  * }
  * </pre>
- * 没有 "global" 节点时，整个文档视为当前应用的配置；soa.json 缺失或为空时返回保底配置。
+ * <p>黑白名单的匹配维度是<b>调用方 appId</b>（随请求的 {@code x-client-app-id} 头传入），
+ * 精确匹配、大小写不敏感；不是 IP。
+ * <p>
+ * 没有 "global" 节点时，整个文档视为当前应用的配置；soa.json 缺失或为空时返回
+ * 「全部未配置」的空配置（不限流、不熔断、名单为空）。治理配置只认 soa.json。
  */
 public final class SoaConfigParser {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
-    public SoaConfig parse(String content, String appId, RpcGovernanceProperties baseline) {
-        SoaConfig defaultConfig = baseline(baseline);
+    public SoaConfig parse(String content, String appId) {
+        SoaConfig emptyConfig = empty();
         if (content == null || content.isBlank()) {
-            return defaultConfig;
+            return emptyConfig;
         }
 
         JsonNode root;
@@ -50,7 +54,7 @@ public final class SoaConfigParser {
             throw new IllegalArgumentException("Invalid soa.json: " + e.getMessage(), e);
         }
         if (root == null || !root.isObject()) {
-            return defaultConfig;
+            return emptyConfig;
         }
 
         JsonNode global = objectNode(root, "global");
@@ -59,27 +63,28 @@ public final class SoaConfigParser {
             app = root;
         }
 
-        // 限流：应用配置优先，其次全局，缺省用保底；qps <= 0（约定 -1）表示不限制
-        boolean rateLimitEnabled = baselineRateLimitEnabled(baseline);
-        long qps = baseline.getBaselineRateLimitQps();
+        // 限流：应用配置优先，其次全局；未配置（null）表示不限流，qps <= 0（约定 -1）表示不限制
+        Long qps = null;
+        boolean rateLimitEnabled = false;
         JsonNode rateLimit = firstNonNull(app, global, "rateLimit");
         if (rateLimit != null && rateLimit.isObject()) {
-            qps = longValue(rateLimit, "qps", qps);
-            rateLimitEnabled = booleanValue(rateLimit, "enabled", rateLimitEnabled) && qps > 0;
+            qps = longValue(rateLimit, "qps", null);
+            rateLimitEnabled = booleanValue(rateLimit, "enabled", true) && qps != null && qps > 0;
         }
 
-        // 熔断：全局参数，应用可覆盖 enabled
-        boolean circuitBreakerEnabled = baseline.isBaselineCircuitBreakerEnabled();
-        CircuitBreakerSettings circuitBreaker = baselineCircuitBreaker(baseline);
+        // 熔断：全局参数，应用可覆盖 enabled；节点存在时默认开启，未配置参数的字段为 null
+        //（构建 CircuitBreaker 时落 Armeria 默认值）
+        boolean circuitBreakerEnabled = false;
+        CircuitBreakerSettings circuitBreaker = new CircuitBreakerSettings(null, null, null, null, null);
         JsonNode cbNode = firstNonNull(app, global, "circuitBreaker");
         if (cbNode != null && cbNode.isObject()) {
-            circuitBreakerEnabled = booleanValue(cbNode, "enabled", circuitBreakerEnabled);
+            circuitBreakerEnabled = booleanValue(cbNode, "enabled", true);
             circuitBreaker = new CircuitBreakerSettings(
-                    doubleValue(cbNode, "failureRateThreshold", circuitBreaker.failureRateThreshold()),
-                    longValue(cbNode, "minimumRequestThreshold", circuitBreaker.minimumRequestThreshold()),
-                    longValue(cbNode, "circuitOpenWindowMillis", circuitBreaker.circuitOpenWindowMillis()),
-                    longValue(cbNode, "trialRequestIntervalMillis", circuitBreaker.trialRequestIntervalMillis()),
-                    longValue(cbNode, "counterSlidingWindowMillis", circuitBreaker.counterSlidingWindowMillis()));
+                    doubleValue(cbNode, "failureRateThreshold", null),
+                    longValue(cbNode, "minimumRequestThreshold", null),
+                    longValue(cbNode, "circuitOpenWindowMillis", null),
+                    longValue(cbNode, "trialRequestIntervalMillis", null),
+                    longValue(cbNode, "counterSlidingWindowMillis", null));
         }
 
         // 指定接口限流：只有应用段可配（不含熔断）
@@ -98,34 +103,16 @@ public final class SoaConfigParser {
         List<String> whitelist = strings(firstNonNull(app, global, "whitelist"));
 
         return new SoaConfig(
-                rateLimitEnabled, qps, interfaces,
+                rateLimitEnabled, qps == null ? -1 : qps, interfaces,
                 circuitBreakerEnabled, circuitBreaker,
                 blacklist, whitelist);
     }
 
-    public SoaConfig baseline(RpcGovernanceProperties baseline) {
-        return new SoaConfig(
-                baselineRateLimitEnabled(baseline),
-                baseline.getBaselineRateLimitQps(),
-                Map.of(),
-                baseline.isBaselineCircuitBreakerEnabled(),
-                baselineCircuitBreaker(baseline),
-                List.of(),
-                List.of());
-    }
-
-    private static boolean baselineRateLimitEnabled(RpcGovernanceProperties baseline) {
-        // 保底限流始终开启（由 rpc.governance.baseline-rate-limit-qps 决定大小，-1 或 <= 0 表示不限制）
-        return baseline.getBaselineRateLimitQps() > 0;
-    }
-
-    private static CircuitBreakerSettings baselineCircuitBreaker(RpcGovernanceProperties baseline) {
-        return new CircuitBreakerSettings(
-                baseline.getBaselineFailureRateThreshold(),
-                baseline.getBaselineMinimumRequestThreshold(),
-                baseline.getBaselineCircuitOpenWindowMillis(),
-                baseline.getBaselineTrialRequestIntervalMillis(),
-                baseline.getBaselineCounterSlidingWindowMillis());
+    /** 全部未配置的空配置：不限流、不熔断、名单为空（启动时先铺底，等待 Nacos 配置加载）。 */
+    public SoaConfig empty() {
+        return new SoaConfig(false, -1, Map.of(), false,
+                new CircuitBreakerSettings(null, null, null, null, null),
+                List.of(), List.of());
     }
 
     private static JsonNode objectNode(JsonNode parent, String field) {
@@ -174,13 +161,13 @@ public final class SoaConfigParser {
         return value != null && value.isBoolean() ? value.booleanValue() : defaultValue;
     }
 
-    private static long longValue(JsonNode node, String field, long defaultValue) {
+    private static Long longValue(JsonNode node, String field, Long defaultValue) {
         JsonNode value = node.get(field);
-        return value != null && value.isNumber() ? value.longValue() : defaultValue;
+        return value != null && value.isNumber() ? Long.valueOf(value.longValue()) : defaultValue;
     }
 
-    private static double doubleValue(JsonNode node, String field, double defaultValue) {
+    private static Double doubleValue(JsonNode node, String field, Double defaultValue) {
         JsonNode value = node.get(field);
-        return value != null && value.isNumber() ? value.doubleValue() : defaultValue;
+        return value != null && value.isNumber() ? Double.valueOf(value.doubleValue()) : defaultValue;
     }
 }

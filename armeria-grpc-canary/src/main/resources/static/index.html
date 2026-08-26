@@ -47,6 +47,51 @@
 
         .row + .row { margin-top: 16px; }
 
+        .namespace-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 10px;
+        }
+
+        .namespace-head label { font-size: 13px; font-weight: 500; color: #555; }
+
+        .namespace-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .namespace-bar .ns-chip {
+            padding: 6px 14px;
+            font-size: 13px;
+            font-family: inherit;
+            font-weight: 500;
+            color: #555;
+            background: #fff;
+            border: 1px solid #d0d0d0;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: background .15s, border-color .15s, color .15s;
+        }
+
+        .namespace-bar .ns-chip:hover {
+            border-color: #4a90d9;
+            color: #4a90d9;
+        }
+
+        .namespace-bar .ns-chip.active {
+            color: #fff;
+            background: #4a90d9;
+            border-color: #3b7cc0;
+        }
+
+        .namespace-bar .ns-chip.active:hover {
+            color: #fff;
+            background: #3b7cc0;
+        }
+
         .form-group {
             display: flex;
             flex-direction: column;
@@ -178,12 +223,17 @@
 <div class="container">
     <div class="header">
         <h1>gRPC 接口测试控制台</h1>
-        <p>输入 appid 从 Nacos 加载实例，选择实例与接口后编辑请求 JSON 发送，响应展示在右侧</p>
+        <p>选择命名空间并输入 appid，从 Nacos 加载该命名空间下的实例，选择实例与接口后编辑请求 JSON 发送</p>
     </div>
 
     <div id="errorBar" class="error-bar" hidden></div>
 
     <div class="card">
+        <div class="namespace-head">
+            <label>命名空间</label>
+            <span class="meta" id="namespaceMeta">从 Nacos 加载中…</span>
+        </div>
+        <div id="namespaceBar" class="namespace-bar"></div>
         <div class="row">
             <div class="form-group">
                 <label for="appId">AppID</label>
@@ -238,7 +288,7 @@
     "use strict";
 
     const $ = (id) => document.getElementById(id);
-    const state = { appId: "", host: "", port: 0, templates: {} };
+    const state = { appId: "", namespace: "", host: "", port: 0, templates: {} };
 
     $("loadInstancesBtn").addEventListener("click", loadInstances);
     $("appId").addEventListener("keydown", (e) => {
@@ -249,6 +299,65 @@
     $("sendBtn").addEventListener("click", sendRequest);
     $("formatBtn").addEventListener("click", formatRequest);
 
+    init();
+
+    /**
+     * 页面加载时先拉取全部命名空间，渲染成可点击的胶囊按钮，
+     * 默认选中后端给出的 defaultNamespace（env 对应项，若有）。
+     */
+    async function init() {
+        try {
+            const data = await getJson("/api/test/namespaces");
+            renderNamespaces(data.namespaces || [], data.defaultNamespace);
+        } catch (err) {
+            $("namespaceMeta").textContent = "加载失败";
+            showError("加载命名空间失败: " + err.message);
+        }
+    }
+
+    function renderNamespaces(namespaces, defaultNamespace) {
+        const bar = $("namespaceBar");
+        bar.innerHTML = "";
+        if (!namespaces.length) {
+            $("namespaceMeta").textContent = "Nacos 中没有命名空间";
+            return;
+        }
+        const preferred = namespaces.some((n) => n.id === defaultNamespace)
+            ? defaultNamespace : namespaces[0].id;
+        namespaces.forEach((n) => {
+            const chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "ns-chip";
+            chip.textContent = n.name && n.name !== n.id ? n.name : n.id;
+            chip.title = n.id;
+            chip.dataset.id = n.id;
+            if (n.id === preferred) {
+                chip.classList.add("active");
+            }
+            chip.addEventListener("click", () => selectNamespace(n.id));
+            bar.appendChild(chip);
+        });
+        state.namespace = preferred;
+        $("namespaceMeta").textContent = namespaces.length + " 个命名空间";
+    }
+
+    /**
+     * 切换命名空间：已填 appid 时自动重新查询实例。
+     */
+    function selectNamespace(id) {
+        if (state.namespace === id) {
+            return;
+        }
+        state.namespace = id;
+        document.querySelectorAll(".ns-chip").forEach((chip) => {
+            chip.classList.toggle("active", chip.dataset.id === id);
+        });
+        hideError();
+        if (state.appId) {
+            loadInstances();
+        }
+    }
+
     async function loadInstances() {
         const appId = $("appId").value.trim();
         if (!appId) {
@@ -258,13 +367,15 @@
         hideError();
         setButtonLoading("loadInstancesBtn", "查询中…", true);
         try {
-            const data = await getJson("/api/test/instances?appId=" + encodeURIComponent(appId));
+            const url = "/api/test/instances?appId=" + encodeURIComponent(appId)
+                + "&namespace=" + encodeURIComponent(state.namespace || "");
+            const data = await getJson(url);
             state.appId = appId;
             const select = $("instanceSelect");
             select.innerHTML = "";
             if (data.length === 0) {
                 select.disabled = true;
-                select.appendChild(new Option("未找到该 appid 的实例", "", true, true));
+                select.appendChild(new Option("当前命名空间未找到该 appid 的实例", "", true, true));
                 $("methodSelect").disabled = true;
                 $("methodSelect").innerHTML = '<option value="">请先选择实例</option>';
                 $("requestBox").value = "";

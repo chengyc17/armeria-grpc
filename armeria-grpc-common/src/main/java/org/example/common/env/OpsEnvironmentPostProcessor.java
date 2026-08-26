@@ -9,7 +9,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -23,7 +22,7 @@ import java.util.Properties;
 /**
  * 从本机 ops 目录读取 env.properties，把其中的配置注入 Spring Environment。
  * <p>
- * Windows 读取 {@code C:\ops\env.properties}，Linux/其他读取 {@code {user.home}/ops/env.properties}。
+ * Windows 读取 {@code C:\ops\env.properties}，Linux/其他读取 {@code /ops/env.properties}。
  * 环境值（key 为 {@code env}）可直接用 {@code ${env}} 引用；
  * 文件不存在、读取失败或缺少 {@code env} 时直接报错，阻止服务启动。
  */
@@ -72,7 +71,7 @@ public class OpsEnvironmentPostProcessor implements EnvironmentPostProcessor {
         String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         String baseDir = os.contains("win")
                 ? "C:\\ops"
-                : System.getProperty("user.home") + File.separator + "ops";
+                : "/ops";
         return Paths.get(baseDir, "env.properties");
     }
 }

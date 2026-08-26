@@ -6,13 +6,13 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.grpc.GrpcService;
 import com.linecorp.armeria.server.grpc.GrpcServiceBuilder;
 import io.grpc.BindableService;
+import io.netty.util.internal.StringUtil;
 import org.example.config.AppConfigService;
 import org.example.rpc.client.GrpcClientBeanPostProcessor;
 import org.example.rpc.context.ClientContext;
 import org.example.rpc.context.ClientContextServerInterceptor;
 import org.example.rpc.governance.GovernanceConfigManager;
 import org.example.rpc.governance.GovernanceServerInterceptor;
-import org.example.rpc.governance.RpcGovernanceProperties;
 import org.example.rpc.schema.GrpcJsonSchemaGenerator;
 import org.example.rpc.schema.SchemaEndpoint;
 import org.example.rpc.server.AppIdReader;
@@ -23,28 +23,31 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
+import org.springframework.util.StringUtils;
 
 import java.net.InetAddress;
+import java.util.Optional;
 import java.util.Properties;
 
 @AutoConfiguration
-@EnableConfigurationProperties({RpcProperties.class, RpcGovernanceProperties.class})
+@EnableConfigurationProperties(RpcProperties.class)
 public class RpcAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(RpcAutoConfiguration.class);
 
     @Bean(destroyMethod = "shutDown")
-    public NamingService namingService(RpcProperties properties) throws Exception {
+    public NamingService namingService(RpcProperties properties, Environment environment) throws Exception {
         Properties props = new Properties();
-        props.setProperty("serverAddr", properties.getNacos().getServerAddr());
-        String namespace = properties.getNacos().getNamespace();
-        if (namespace != null && !namespace.isEmpty()) {
-            props.setProperty("namespace", namespace);
+        String addr = Optional.ofNullable(properties).map(x -> x.getNacos()).map(x -> x.getServerAddr()).orElse(null);
+        if (StringUtil.isNullOrEmpty(addr)) {
+            throw new IllegalStateException("nacos register address can not be empty");
         }
+        props.setProperty("serverAddr", addr);
+        props.setProperty("namespace", environment.getProperty("env"));
         return NamingFactory.createNamingService(props);
     }
 
@@ -54,14 +57,17 @@ public class RpcAutoConfiguration {
     }
 
     @Bean
-    public ClientContext clientContext(RpcProperties properties) throws Exception {
+    public ClientContext clientContext(RpcProperties properties, ApplicationContext context,
+                                       Environment environment) throws Exception {
         String hostname = InetAddress.getLocalHost().getHostName();
         String ip = InetAddress.getLocalHost().getHostAddress();
         String idc = properties.getClient().getIdc();
         String groupName = properties.getClient().getGroupName();
-        log.info("ClientContext created: ip={}, hostname={}, idc={}, groupName={}",
-                ip, hostname, idc, groupName);
-        return new ClientContext(ip, hostname, idc, groupName);
+        // 自身 appId：优先取 proto 的 option (app_id)；纯客户端进程没有 @GrpcService，
+        String appId = GrpcServices.findAppId(context);
+        log.info("ClientContext created: appId={}, ip={}, hostname={}, idc={}, groupName={}",
+                appId, ip, hostname, idc, groupName);
+        return new ClientContext(appId, ip, hostname, idc, groupName);
     }
 
     @Bean
@@ -87,25 +93,22 @@ public class RpcAutoConfiguration {
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "rpc.governance", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public GovernanceConfigManager governanceConfigManager(RpcGovernanceProperties properties,
-                                                           ObjectProvider<AppConfigService> configServiceProvider,
+    public GovernanceConfigManager governanceConfigManager(ObjectProvider<AppConfigService> configServiceProvider,
                                                            ApplicationContext context) {
-        return new GovernanceConfigManager(properties, configServiceProvider, GrpcServices.resolveAppId(context));
+        return new GovernanceConfigManager(configServiceProvider, GrpcServices.resolveAppId(context));
     }
 
     @Bean
-    @ConditionalOnProperty(prefix = "rpc.governance", name = "enabled", havingValue = "true", matchIfMissing = true)
     public GovernanceServerInterceptor governanceServerInterceptor(GovernanceConfigManager manager) {
         return new GovernanceServerInterceptor(manager);
     }
 
     @Bean(destroyMethod = "stop")
     public Server armeriaServer(ApplicationContext ctx, RpcProperties properties,
-                                 NacosInstanceRegistrar registrar,
-                                 SchemaEndpoint schemaEndpoint,
-                                 ClientContextServerInterceptor serverInterceptor,
-                                 ObjectProvider<GovernanceServerInterceptor> governanceInterceptorProvider) throws Exception {
+                                NacosInstanceRegistrar registrar,
+                                SchemaEndpoint schemaEndpoint,
+                                ClientContextServerInterceptor serverInterceptor,
+                                ObjectProvider<GovernanceServerInterceptor> governanceInterceptorProvider) throws Exception {
 
         GrpcServiceBuilder grpcServiceBuilder = GrpcService.builder()
                 .enableUnframedRequests(true)
@@ -140,7 +143,14 @@ public class RpcAutoConfiguration {
         log.info("Armeria server started on port {} with appId={}", properties.getPort(), appId);
 
         String host = InetAddress.getLocalHost().getHostAddress();
-        registrar.register(appId, host, properties.getPort());
+        try {
+            registrar.register(appId, host, properties.getPort());
+        } catch (Exception e) {
+            // 注册失败时停掉已启动的 Armeria server，避免端口被泄漏占用
+            // （否则进程会残留监听端口，下一次启动报 Address already in use: bind）
+            server.stop().join();
+            throw e;
+        }
         log.info("Registered service {} -> {}:{} to Nacos", appId, host, properties.getPort());
 
         return server;

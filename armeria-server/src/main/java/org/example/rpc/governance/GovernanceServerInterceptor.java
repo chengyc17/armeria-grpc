@@ -1,6 +1,5 @@
 package org.example.rpc.governance;
 
-import com.linecorp.armeria.server.ServiceRequestContext;
 import io.grpc.ForwardingServerCall;
 import io.grpc.ForwardingServerCallListener;
 import io.grpc.Metadata;
@@ -9,12 +8,18 @@ import io.grpc.ServerCallHandler;
 import io.grpc.ServerInterceptor;
 import io.grpc.Status;
 
-import java.net.InetSocketAddress;
-
 /**
- * gRPC 服务端治理拦截器：黑白名单 -> 限流（全局 QPS + 指定接口 QPS） -> 熔断。
+ * gRPC 服务端治理拦截器：黑白名单（按调用方 appId） -> 限流（全局 QPS + 指定接口 QPS） -> 熔断。
+ *
+ * <p>黑白名单的匹配维度是调用方的 appId（随请求的 {@code x-client-app-id} 头传入，
+ * 由 {@code ClientContextClientInterceptor} 在调用方一侧自动携带）。这里直接读请求头
+ * 而不是 {@code ClientContextHolder}：拦截器按注册的逆序执行，本拦截器先于
+ * ClientContext 拦截器运行，此时上下文尚未填充。
  */
 public class GovernanceServerInterceptor implements ServerInterceptor {
+
+    private static final Metadata.Key<String> CLIENT_APP_ID_KEY =
+            Metadata.Key.of("x-client-app-id", Metadata.ASCII_STRING_MARSHALLER);
 
     private final GovernanceConfigManager configManager;
 
@@ -26,9 +31,10 @@ public class GovernanceServerInterceptor implements ServerInterceptor {
     public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
             ServerCall<ReqT, RespT> call, Metadata headers, ServerCallHandler<ReqT, RespT> next) {
 
-        String ip = remoteIp();
-        if (ip != null && !configManager.isIpAllowed(ip)) {
-            call.close(Status.PERMISSION_DENIED.withDescription("IP not allowed: " + ip), new Metadata());
+        String appId = headers.get(CLIENT_APP_ID_KEY);
+        if (!configManager.isAppIdAllowed(appId)) {
+            call.close(Status.PERMISSION_DENIED.withDescription(
+                    "App not allowed: " + (appId == null ? "<no app id>" : appId)), new Metadata());
             return new ServerCall.Listener<>() {};
         }
 
@@ -39,25 +45,16 @@ public class GovernanceServerInterceptor implements ServerInterceptor {
             return new ServerCall.Listener<>() {};
         }
 
-        if (!configManager.tryAcquireCircuitBreaker()) {
-            call.close(Status.UNAVAILABLE.withDescription("Circuit breaker is open"), new Metadata());
-            return new ServerCall.Listener<>() {};
+        if (configManager.isCircuitBreakerEnabled()) {
+            if (!configManager.tryAcquireCircuitBreaker()) {
+                call.close(Status.UNAVAILABLE.withDescription("Circuit breaker is open"), new Metadata());
+                return new ServerCall.Listener<>() {};
+            }
+            // 熔断启用时才需要包装 call 来上报结果；关闭时直接放行，避免每个请求额外分配包装对象
+            ServerCall.Listener<ReqT> delegate = next.startCall(new ReportingServerCall<>(call, configManager), headers);
+            return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {};
         }
-
-        ServerCall.Listener<ReqT> delegate = next.startCall(new ReportingServerCall<>(call, configManager), headers);
-        return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {};
-    }
-
-    private static String remoteIp() {
-        ServiceRequestContext ctx = ServiceRequestContext.currentOrNull();
-        if (ctx == null) {
-            return null;
-        }
-        InetSocketAddress remote = ctx.remoteAddress();
-        if (remote == null || remote.getAddress() == null) {
-            return null;
-        }
-        return remote.getAddress().getHostAddress();
+        return next.startCall(call, headers);
     }
 
     private static final class ReportingServerCall<ReqT, RespT> extends ForwardingServerCall<ReqT, RespT> {

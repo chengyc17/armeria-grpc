@@ -1,0 +1,13 @@
+rpc:
+  # 每个进程都会启动内嵌 gRPC 服务端并注册到 Nacos（不再支持纯客户端模式）
+  port: 18083
+  # appId 不需要在此配置——自动从本进程 @GrpcService 对应的 proto option (app_id)
+  # 读取（ProductService 为 100004336），注册到 Nacos 并作为调用方标识随请求传递。
+  nacos:
+    # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
+    server-addr: 127.0.0.1:8848
+  client:
+    # 调用方上下文：机房/分组，会通过 gRPC 请求头透传给服务端
+    idc: bj
+    group-name: example
+  # 不配 rpc.config.* 即不激活配置中心模块（治理配置保持空配置，全部放行）

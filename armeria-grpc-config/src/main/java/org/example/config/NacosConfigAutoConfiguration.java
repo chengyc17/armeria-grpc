@@ -14,15 +14,19 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 /**
  * Nacos 配置中心自动配置：启动时按 dataId 拉取配置，并订阅变更实时更新。
+ *
+ * <p>经典数组配置方式：{@code rpc.config.data-ids} 可配置多个配置文件，全部拉取并订阅；
  * 命名空间默认取本机 ops 目录 env.properties 的 env 值，group 默认取当前服务 appId。
  */
 @AutoConfiguration
 @EnableConfigurationProperties(NacosConfigProperties.class)
-@ConditionalOnProperty(prefix = "rpc.config", name = "enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "rpc.config")
 public class NacosConfigAutoConfiguration {
 
     @Bean(destroyMethod = "shutDown")
@@ -35,14 +39,7 @@ public class NacosConfigAutoConfiguration {
         }
         Properties props = new Properties();
         props.setProperty(PropertyKeyConst.SERVER_ADDR, serverAddr);
-        String namespace = properties.getNamespace();
-        if (namespace == null || namespace.isBlank()) {
-            // 命名空间未配置时，取本机 ops 目录 env.properties 中的 env 值
-            namespace = environment.getProperty("env");
-        }
-        if (namespace != null && !namespace.isBlank()) {
-            props.setProperty(PropertyKeyConst.NAMESPACE, namespace);
-        }
+        props.setProperty(PropertyKeyConst.NAMESPACE, environment.getProperty("env"));
         try {
             return NacosFactory.createConfigService(props);
         } catch (NacosException e) {
@@ -56,16 +53,26 @@ public class NacosConfigAutoConfiguration {
                                              NacosConfigProperties properties,
                                              ApplicationContext context,
                                              ApplicationEventPublisher eventPublisher) {
-        String dataId = properties.getDataId();
-        if (dataId == null || dataId.isBlank()) {
-            throw new IllegalStateException(
-                    "rpc.config.data-id must be configured (e.g. soa.json).");
+        List<String> dataIds = resolveDataIds(properties.getDataIds());
+        return new AppConfigService(configService, properties, dataIds, GrpcServices.resolveAppId(context), eventPublisher);
+    }
+
+    /**
+     * 规整 data-ids：过滤空值，并确保默认的 {@link AppConfigService#SOA_CONFIG_DATA_ID} 始终存在。
+     * 已配置时不会重复添加；未配置或列表为空时自动补上。
+     */
+    static List<String> resolveDataIds(List<String> configured) {
+        List<String> dataIds = new ArrayList<>();
+        if (configured != null) {
+            for (String dataId : configured) {
+                if (dataId != null && !dataId.isBlank()) {
+                    dataIds.add(dataId.trim());
+                }
+            }
         }
-        String group = properties.getGroup();
-        if (group == null || group.isBlank()) {
-            // group 未配置时，默认取当前服务唯一的 appId
-            group = GrpcServices.resolveAppId(context);
+        if (dataIds.stream().noneMatch(AppConfigService.SOA_CONFIG_DATA_ID::equalsIgnoreCase)) {
+            dataIds.add(0, AppConfigService.SOA_CONFIG_DATA_ID);
         }
-        return new AppConfigService(configService, properties, dataId, group, eventPublisher);
+        return List.copyOf(dataIds);
     }
 }

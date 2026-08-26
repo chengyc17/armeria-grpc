@@ -7,7 +7,18 @@ spring:
 
 test-console:
   nacos:
-    # 环境值从本机 ops 目录 env.properties 读取（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
     server-addr: 127.0.0.1:8848
-    namespace: "${env}"
     group: DEFAULT_GROUP
+    # 命名空间不再固定：页面会从 Nacos 拉取全部命名空间并排展示，点击选择；
+    # 下面的 namespace 仅作为页面初始选中的默认值，
+    # 为空时取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
+    # namespace: dev
+    # Nacos 开启鉴权时填写（用于拉取命名空间列表及创建 NamingService）
+    # username: nacos
+    # password: nacos
+    # Nacos 3.x 的 admin 接口（/nacos/v3/admin/**）即使 auth.enabled=false 也强制鉴权
+    # （nacos.core.auth.admin.enabled 默认 true）。带上服务端 identity 头即可通过，
+    # 取值需与 Nacos 服务端 application.properties 中下面两项一致：
+    #   nacos.core.auth.server.identity.key / nacos.core.auth.server.identity.value
+    identity-key: server.identity
+    identity-value: a1b2c3d4e5f67890123456789abcdef0

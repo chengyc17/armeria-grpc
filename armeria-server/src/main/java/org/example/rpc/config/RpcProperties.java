@@ -21,14 +21,10 @@ public class RpcProperties {
     public Client getClient() { return client; }
 
     public static class Nacos {
-        private String serverAddr = "127.0.0.1:8848";
-        private String namespace = "";
+        private String serverAddr = "";
 
         public String getServerAddr() { return serverAddr; }
         public void setServerAddr(String serverAddr) { this.serverAddr = serverAddr; }
-
-        public String getNamespace() { return namespace; }
-        public void setNamespace(String namespace) { this.namespace = namespace; }
     }
 
     public static class Client {

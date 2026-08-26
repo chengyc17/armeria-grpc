@@ -12,52 +12,91 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.StringReader;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 从 Nacos 读取指定 dataId 的配置：启动时加载，配置修改后实时更新。
- * <p>
- * 读取方式：{@link #getProperty(String)} / {@link #getProperties()} 获取扁平化配置，
- * {@link #getConfig()} 获取结构化配置（YAML 为嵌套 Map，properties 为扁平 Map）；
- * 配置变更时会发布 {@link AppConfigChangedEvent}。
+ * Nacos 配置中心客户端：按数组方式（data-ids）拉取所有配置的配置文件，并订阅变更实时更新。
+ *
+ * <p>每个 dataId 独立加载、解析和订阅；读取方式：
+ * <ul>
+ *   <li>{@link #getRawConfig(String)} / {@link #getConfig(String)} / {@link #getProperties(String)}
+ *       —— 按 dataId 读取单个文件；</li>
+ *   <li>{@link #getProperties()} —— 所有配置文件合并后的扁平视图
+ *       （后配置的 dataId 覆盖先配置的同名 key）。</li>
+ * </ul>
+ *
+ * <p>默认拉取 {@value #SOA_CONFIG_DATA_ID}（服务治理配置：限流/熔断/黑白名单）；
+ * 文件未配置或拉取不到时仅记录日志，不影响启动。
  */
 public class AppConfigService implements InitializingBean, DisposableBean {
 
     private static final Logger log = LoggerFactory.getLogger(AppConfigService.class);
 
+    /** 默认拉取的服务治理配置文件；缺失时治理使用本地兜底配置。 */
+    public static final String SOA_CONFIG_DATA_ID = "soa.json";
+
     private final ConfigService configService;
     private final NacosConfigProperties properties;
-    private final String dataId;
+    private final List<String> dataIds;
     private final String group;
     private final ApplicationEventPublisher eventPublisher;
     private final ScheduledExecutorService retryExecutor;
-    private final Listener listener;
 
-    private volatile ConfigSnapshot snapshot = ConfigSnapshot.empty();
-    private volatile ScheduledFuture<?> subscribeRetryFuture;
+    private final Map<String, ConfigSnapshot> snapshots = new ConcurrentHashMap<>();
+    private final Map<String, Listener> listeners = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> retryFutures = new ConcurrentHashMap<>();
 
     public AppConfigService(ConfigService configService, NacosConfigProperties properties,
-                            String dataId, String group, ApplicationEventPublisher eventPublisher) {
+                            List<String> dataIds, String group,
+                            ApplicationEventPublisher eventPublisher) {
         this.configService = configService;
         this.properties = properties;
-        this.dataId = dataId;
+        this.dataIds = List.copyOf(dataIds);
         this.group = group;
         this.eventPublisher = eventPublisher;
         this.retryExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread thread = new Thread(r, "nacos-config-subscribe-" + dataId);
+            Thread thread = new Thread(r, "nacos-config-subscribe");
             thread.setDaemon(true);
             return thread;
         });
-        this.listener = new Listener() {
+    }
+
+    @Override
+    public void afterPropertiesSet() {
+        for (String dataId : dataIds) {
+            snapshots.put(dataId, ConfigSnapshot.empty());
+            loadInitialConfig(dataId);
+            subscribe(dataId);
+        }
+    }
+
+    private void loadInitialConfig(String dataId) {
+        try {
+            String content = configService.getConfig(dataId, group, properties.getTimeoutMs());
+            if (content == null || content.isBlank()) {
+                log.info("Nacos config dataId={}, group={} not configured, keep defaults", dataId, group);
+                return;
+            }
+            snapshots.put(dataId, parse(dataId, content));
+            log.info("Loaded Nacos config dataId={}, group={}", dataId, group);
+        } catch (Exception e) {
+            log.warn("Failed to load Nacos config dataId={}, group={}: {}", dataId, group, e.getMessage());
+        }
+    }
+
+    private void subscribe(String dataId) {
+        Listener listener = new Listener() {
             @Override
             public java.util.concurrent.Executor getExecutor() {
                 // null 表示使用 Nacos 客户端的默认执行器
@@ -66,75 +105,58 @@ public class AppConfigService implements InitializingBean, DisposableBean {
 
             @Override
             public void receiveConfigInfo(String configInfo) {
-                onConfigChanged(configInfo);
+                onConfigChanged(dataId, configInfo);
             }
         };
-    }
+        listeners.put(dataId, listener);
 
-    @Override
-    public void afterPropertiesSet() {
-        loadInitialConfig();
-        subscribe();
-    }
-
-    private void loadInitialConfig() {
-        try {
-            String content = configService.getConfig(dataId, group, properties.getTimeoutMs());
-            snapshot = parse(content);
-            log.info("Loaded Nacos config dataId={}, group={}", dataId, group);
-        } catch (Exception e) {
-            log.error("Failed to load Nacos config dataId={}, group={}: {}", dataId, group, e.getMessage());
-        }
-    }
-
-    private void subscribe() {
         try {
             configService.addListener(dataId, group, listener);
             log.info("Subscribed Nacos config dataId={}, group={}", dataId, group);
         } catch (Exception e) {
             log.warn("Failed to subscribe Nacos config dataId={}, group={}, will retry in {}ms: {}",
                     dataId, group, properties.getRetryIntervalMs(), e.getMessage());
-            scheduleSubscribeRetry();
+            scheduleSubscribeRetry(dataId);
         }
     }
 
-    private void scheduleSubscribeRetry() {
-        subscribeRetryFuture = retryExecutor.scheduleWithFixedDelay(() -> {
+    private void scheduleSubscribeRetry(String dataId) {
+        ScheduledFuture<?> future = retryExecutor.scheduleWithFixedDelay(() -> {
             try {
-                configService.addListener(dataId, group, listener);
+                configService.addListener(dataId, group, listeners.get(dataId));
                 log.info("Subscribed Nacos config dataId={}, group={} after retry", dataId, group);
-                ScheduledFuture<?> future = subscribeRetryFuture;
-                if (future != null) {
-                    future.cancel(false);
-                    subscribeRetryFuture = null;
+                ScheduledFuture<?> retryFuture = retryFutures.remove(dataId);
+                if (retryFuture != null) {
+                    retryFuture.cancel(false);
                 }
             } catch (Exception e) {
                 log.warn("Retry to subscribe Nacos config dataId={}, group={} failed: {}",
                         dataId, group, e.getMessage());
             }
         }, properties.getRetryIntervalMs(), properties.getRetryIntervalMs(), TimeUnit.MILLISECONDS);
+        retryFutures.put(dataId, future);
     }
 
-    private void onConfigChanged(String configInfo) {
+    private void onConfigChanged(String dataId, String configInfo) {
         ConfigSnapshot next;
         try {
-            next = parse(configInfo);
+            next = parse(dataId, configInfo);
         } catch (Exception e) {
             log.error("Failed to parse updated Nacos config dataId={}, group={}, keep previous config: {}",
                     dataId, group, e.getMessage());
             return;
         }
-        ConfigSnapshot previous = snapshot;
+        ConfigSnapshot previous = snapshots.getOrDefault(dataId, ConfigSnapshot.empty());
         if (Objects.equals(previous.rawContent(), next.rawContent())) {
             return;
         }
-        snapshot = next;
+        snapshots.put(dataId, next);
         log.info("Nacos config updated dataId={}, group={}", dataId, group);
         eventPublisher.publishEvent(new AppConfigChangedEvent(
                 this, dataId, group, previous.rawContent(), next.rawContent()));
     }
 
-    private ConfigSnapshot parse(String content) {
+    private ConfigSnapshot parse(String dataId, String content) {
         if (content == null || content.isBlank()) {
             return ConfigSnapshot.empty();
         }
@@ -142,11 +164,11 @@ public class AppConfigService implements InitializingBean, DisposableBean {
             case YAML -> parseYaml(content);
             case JSON -> parseJson(content);
             case PROPERTIES -> parseProperties(content);
-            case AUTO -> parseAuto(content);
+            case AUTO -> parseAuto(dataId, content);
         };
     }
 
-    private ConfigSnapshot parseAuto(String content) {
+    private ConfigSnapshot parseAuto(String dataId, String content) {
         if (isYamlDataId(dataId)) {
             return parseYaml(content);
         }
@@ -242,7 +264,7 @@ public class AppConfigService implements InitializingBean, DisposableBean {
             return map;
         }
         if (node.isArray()) {
-            List<Object> list = new java.util.ArrayList<>();
+            List<Object> list = new ArrayList<>();
             node.forEach(item -> list.add(toJava(item)));
             return list;
         }
@@ -272,54 +294,78 @@ public class AppConfigService implements InitializingBean, DisposableBean {
         }
     }
 
-    public String getDataId() {
-        return dataId;
+    public List<String> getDataIds() {
+        return dataIds;
     }
 
     public String getGroup() {
         return group;
     }
 
-    /** 最近一次加载/更新的原始配置内容；未加载到配置时为 null */
-    public String getRawConfig() {
-        return snapshot.rawContent();
+    /** 最近一次加载/更新的指定 dataId 原始配置内容；未配置或拉取不到时为 null。 */
+    public String getRawConfig(String dataId) {
+        ConfigSnapshot snapshot = snapshots.get(dataId);
+        return snapshot == null ? null : snapshot.rawContent();
     }
 
+    public boolean isLoaded(String dataId) {
+        ConfigSnapshot snapshot = snapshots.get(dataId);
+        return snapshot != null && snapshot.rawContent() != null;
+    }
+
+    /** 是否存在任意一个已加载的配置文件。 */
     public boolean isLoaded() {
-        return snapshot.rawContent() != null;
+        return dataIds.stream().anyMatch(this::isLoaded);
     }
 
-    /** 结构化配置：YAML 为嵌套 Map，properties 为扁平 Map */
-    public Map<String, Object> getConfig() {
-        return snapshot.structured();
+    /** 指定 dataId 的结构化配置：YAML 为嵌套 Map，properties 为扁平 Map。 */
+    public Map<String, Object> getConfig(String dataId) {
+        ConfigSnapshot snapshot = snapshots.get(dataId);
+        return snapshot == null ? Map.of() : snapshot.structured();
     }
 
-    /** 扁平化 key=value 配置 */
+    /** 指定 dataId 的扁平化 key=value 配置。 */
+    public Map<String, String> getProperties(String dataId) {
+        ConfigSnapshot snapshot = snapshots.get(dataId);
+        return snapshot == null ? Map.of() : snapshot.flat();
+    }
+
+    /** 所有已配置文件的合并扁平视图（后配置的 dataId 覆盖先配置的同名 key）。 */
     public Map<String, String> getProperties() {
-        return snapshot.flat();
+        Map<String, String> merged = new LinkedHashMap<>();
+        for (String dataId : dataIds) {
+            ConfigSnapshot snapshot = snapshots.get(dataId);
+            if (snapshot != null) {
+                merged.putAll(snapshot.flat());
+            }
+        }
+        return Collections.unmodifiableMap(merged);
     }
 
-    public String getProperty(String key) {
-        return snapshot.flat().get(key);
+    public String getProperty(String dataId, String key) {
+        return getProperty(dataId, key, null);
     }
 
-    public String getProperty(String key, String defaultValue) {
-        return snapshot.flat().getOrDefault(key, defaultValue);
+    public String getProperty(String dataId, String key, String defaultValue) {
+        ConfigSnapshot snapshot = snapshots.get(dataId);
+        return snapshot == null ? defaultValue : snapshot.flat().getOrDefault(key, defaultValue);
     }
 
     @Override
     public void destroy() {
-        ScheduledFuture<?> future = subscribeRetryFuture;
-        if (future != null) {
-            future.cancel(false);
-        }
+        retryFutures.values().forEach(future -> future.cancel(false));
+        retryFutures.clear();
         retryExecutor.shutdownNow();
-        try {
-            configService.removeListener(dataId, group, listener);
-        } catch (Exception e) {
-            log.warn("Failed to remove Nacos config listener dataId={}, group={}: {}",
-                    dataId, group, e.getMessage());
+
+        for (Map.Entry<String, Listener> entry : listeners.entrySet()) {
+            try {
+                configService.removeListener(entry.getKey(), group, entry.getValue());
+            } catch (Exception e) {
+                log.warn("Failed to remove Nacos config listener dataId={}, group={}: {}",
+                        entry.getKey(), group, e.getMessage());
+            }
         }
+        listeners.clear();
     }
 
     private record ConfigSnapshot(String rawContent, Map<String, Object> structured, Map<String, String> flat) {

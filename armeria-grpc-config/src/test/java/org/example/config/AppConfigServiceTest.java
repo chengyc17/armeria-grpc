@@ -11,7 +11,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -23,118 +25,116 @@ import static org.mockito.Mockito.when;
 
 class AppConfigServiceTest {
 
-    private static final String DATA_ID = "user-service";
-    private static final String GROUP = "DEFAULT_GROUP";
+    private static final String SOA_DATA_ID = "soa.json";
+    private static final String APP_DATA_ID = "user-service.yaml";
+    private static final String GROUP = "100004336";
 
     private static AppConfigService newAppConfigService(ConfigService configService,
-                                                        String dataId,
+                                                        List<String> dataIds,
                                                         List<Object> events) {
-        return new AppConfigService(configService, new NacosConfigProperties(), dataId, GROUP, events::add);
+        return new AppConfigService(configService, new NacosConfigProperties(), dataIds, GROUP, events::add);
     }
 
     @Test
-    void loadsPropertiesConfigAtStartup() throws Exception {
+    void loadsAllConfiguredDataIds() throws Exception {
         ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig(DATA_ID, GROUP, 3000))
-                .thenReturn("app.name=user-service\napp.port=8080\n");
+        when(configService.getConfig(SOA_DATA_ID, GROUP, 3000))
+                .thenReturn("{\"global\":{\"rateLimit\":{\"qps\":10000}},\"100004336\":{\"blacklist\":[\"1.2.3.4\"]}}");
+        when(configService.getConfig(APP_DATA_ID, GROUP, 3000))
+                .thenReturn("server:\n  port: 8080\n  tags:\n    - a\n    - b\nname: user-service\n");
 
-        AppConfigService service = newAppConfigService(configService, DATA_ID, new ArrayList<>());
+        AppConfigService service = newAppConfigService(configService, List.of(SOA_DATA_ID, APP_DATA_ID),
+                new ArrayList<>());
         service.afterPropertiesSet();
 
-        assertTrue(service.isLoaded());
-        assertEquals("user-service", service.getProperty("app.name"));
-        assertEquals("8080", service.getProperty("app.port"));
-        assertEquals("default", service.getProperty("missing", "default"));
-        assertEquals(2, service.getProperties().size());
+        // 按 dataId 读取
+        assertEquals("10000", service.getProperty(SOA_DATA_ID, "global.rateLimit.qps"));
+        assertEquals("1.2.3.4", service.getProperty(SOA_DATA_ID, "100004336.blacklist[0]"));
+        assertEquals("8080", service.getProperty(APP_DATA_ID, "server.port"));
+        assertEquals("a", service.getProperty(APP_DATA_ID, "server.tags[0]"));
+        assertInstanceOf(Map.class, service.getConfig(APP_DATA_ID).get("server"));
+        assertTrue(service.isLoaded(SOA_DATA_ID));
+        assertTrue(service.isLoaded(APP_DATA_ID));
+
+        // 合并视图包含两个文件的 key
+        Map<String, String> merged = service.getProperties();
+        assertEquals("10000", merged.get("global.rateLimit.qps"));
+        assertEquals("8080", merged.get("server.port"));
     }
 
     @Test
-    void loadsYamlConfigAndFlattens() throws Exception {
+    void missingSoaJsonDoesNotBreakStartup() throws Exception {
         ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig("user-service.yaml", GROUP, 3000))
-                .thenReturn("server:\n  port: 8080\n  tags:\n    - a\n    - b\nname: demo\n");
+        // 不 stub getConfig，Mockito 默认返回 null，模拟 soa.json 未配置
 
-        AppConfigService service = newAppConfigService(configService, "user-service.yaml", new ArrayList<>());
+        AppConfigService service = newAppConfigService(configService, List.of(SOA_DATA_ID), new ArrayList<>());
         service.afterPropertiesSet();
 
-        assertEquals("8080", service.getProperty("server.port"));
-        assertEquals("a", service.getProperty("server.tags[0]"));
-        assertEquals("b", service.getProperty("server.tags[1]"));
-        assertEquals("demo", service.getProperty("name"));
-        assertInstanceOf(Map.class, service.getConfig().get("server"));
-    }
-
-    @Test
-    void loadsJsonConfigAndFlattens() throws Exception {
-        ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig("soa.json", GROUP, 3000))
-                .thenReturn("{\"global\":{\"rateLimit\":{\"qps\":10000}},\"user-service\":{\"blacklist\":[\"1.2.3.4\"]}}\n");
-
-        AppConfigService service = newAppConfigService(configService, "soa.json", new ArrayList<>());
-        service.afterPropertiesSet();
-
-        assertEquals("10000", service.getProperty("global.rateLimit.qps"));
-        assertEquals("1.2.3.4", service.getProperty("user-service.blacklist[0]"));
-        assertInstanceOf(Map.class, service.getConfig().get("global"));
+        assertFalse(service.isLoaded(SOA_DATA_ID));
+        assertNull(service.getRawConfig(SOA_DATA_ID));
+        assertEquals(Map.of(), service.getConfig(SOA_DATA_ID));
+        assertEquals(Map.of(), service.getProperties(SOA_DATA_ID));
     }
 
     @Test
     void updatesConfigAndPublishesEventWhenNacosNotifies() throws Exception {
         ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig(DATA_ID, GROUP, 3000)).thenReturn("limit=10\n");
+        when(configService.getConfig(SOA_DATA_ID, GROUP, 3000))
+                .thenReturn("{\"rateLimit\":{\"qps\":10000}}");
 
         List<Object> events = new ArrayList<>();
-        AppConfigService service = newAppConfigService(configService, DATA_ID, events);
+        AppConfigService service = newAppConfigService(configService, List.of(SOA_DATA_ID), events);
         service.afterPropertiesSet();
 
         ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
-        verify(configService).addListener(eq(DATA_ID), eq(GROUP), listenerCaptor.capture());
-        listenerCaptor.getValue().receiveConfigInfo("limit=20\nfeature.on=true\n");
+        verify(configService).addListener(eq(SOA_DATA_ID), eq(GROUP), listenerCaptor.capture());
+        listenerCaptor.getValue().receiveConfigInfo("{\"rateLimit\":{\"qps\":20000}}");
 
-        assertEquals("20", service.getProperty("limit"));
-        assertEquals("true", service.getProperty("feature.on"));
+        assertEquals("20000", service.getProperty(SOA_DATA_ID, "rateLimit.qps"));
         assertEquals(1, events.size());
         AppConfigChangedEvent event = assertInstanceOf(AppConfigChangedEvent.class, events.get(0));
-        assertEquals(DATA_ID, event.getDataId());
+        assertEquals(SOA_DATA_ID, event.getDataId());
         assertEquals(GROUP, event.getGroup());
-        assertEquals("limit=10\n", event.getOldContent());
-        assertEquals("limit=20\nfeature.on=true\n", event.getNewContent());
+        assertEquals("{\"rateLimit\":{\"qps\":10000}}", event.getOldContent());
+        assertEquals("{\"rateLimit\":{\"qps\":20000}}", event.getNewContent());
     }
 
     @Test
     void keepsPreviousConfigWhenUpdateIsInvalid() throws Exception {
         ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig(DATA_ID, GROUP, 3000)).thenReturn("limit=10\n");
+        when(configService.getConfig(SOA_DATA_ID, GROUP, 3000))
+                .thenReturn("{\"rateLimit\":{\"qps\":10000}}");
 
         List<Object> events = new ArrayList<>();
-        AppConfigService service = newAppConfigService(configService, DATA_ID, events);
+        AppConfigService service = newAppConfigService(configService, List.of(SOA_DATA_ID), events);
         service.afterPropertiesSet();
 
         ArgumentCaptor<Listener> listenerCaptor = ArgumentCaptor.forClass(Listener.class);
-        verify(configService).addListener(eq(DATA_ID), eq(GROUP), listenerCaptor.capture());
-        // 非法转义会让 Properties.load 抛异常，应保留旧配置
-        listenerCaptor.getValue().receiveConfigInfo("limit=10\nbad=\\uZZZZ\n");
+        verify(configService).addListener(eq(SOA_DATA_ID), eq(GROUP), listenerCaptor.capture());
+        // 非法 JSON 应保留旧配置
+        listenerCaptor.getValue().receiveConfigInfo("{not-json");
 
-        assertEquals("10", service.getProperty("limit"));
+        assertEquals("10000", service.getProperty(SOA_DATA_ID, "rateLimit.qps"));
         assertTrue(events.isEmpty());
     }
 
     @Test
     void retriesSubscriptionWhenInitialSubscribeFails() throws Exception {
         ConfigService configService = mock(ConfigService.class);
-        when(configService.getConfig(DATA_ID, GROUP, 3000)).thenReturn("a=1\n");
+        when(configService.getConfig(SOA_DATA_ID, GROUP, 3000)).thenReturn("a=1\n");
         doThrow(new NacosException(500, "boom"))
                 .doNothing()
-                .when(configService).addListener(eq(DATA_ID), eq(GROUP), any(Listener.class));
+                .when(configService).addListener(eq(SOA_DATA_ID), eq(GROUP), any(Listener.class));
 
         NacosConfigProperties properties = new NacosConfigProperties();
         properties.setRetryIntervalMs(50);
         List<Object> events = new ArrayList<>();
-        AppConfigService service = new AppConfigService(configService, properties, DATA_ID, GROUP, events::add);
+        AppConfigService service = new AppConfigService(configService, properties,
+                List.of(SOA_DATA_ID), GROUP, events::add);
         service.afterPropertiesSet();
 
         verify(configService, timeout(3000).atLeast(2))
-                .addListener(eq(DATA_ID), eq(GROUP), any(Listener.class));
+                .addListener(eq(SOA_DATA_ID), eq(GROUP), any(Listener.class));
         service.destroy();
     }
 }

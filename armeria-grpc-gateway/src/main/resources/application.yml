@@ -6,9 +6,8 @@ gateway:
   # Armeria 网关端口（非阻塞，HTTP/1.1 + HTTP/2）
   port: 9082
   nacos:
-    # 环境值从本机 ops 目录 env.properties 读取（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
+    # namespace 默认取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
     server-addr: 127.0.0.1:8848
-    namespace: "${env}"
     group: DEFAULT_GROUP
     # 兜底刷新间隔（毫秒）；订阅推送偶发丢失时保证缓存最终一致
     refresh-interval-ms: 60000

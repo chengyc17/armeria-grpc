@@ -1,6 +1,5 @@
 package org.example.rpc.context;
 
-import io.grpc.ForwardingServerCallListener;
 import io.grpc.Metadata;
 import io.grpc.ServerCall;
 import io.grpc.ServerCallHandler;
@@ -10,12 +9,18 @@ import org.slf4j.LoggerFactory;
 
 /**
  * gRPC {@link ServerInterceptor} that reads client context metadata from incoming
- * RPC calls and stores it in {@link ClientContextHolder} for the duration of the call.
+ * RPC calls and stores it as an attribute of the current Armeria
+ * {@link com.linecorp.armeria.common.RequestContext} via {@link ClientContextHolder}.
+ *
+ * <p>The context is tied to the request lifecycle and automatically reclaimed when
+ * the request completes — no manual cleanup needed.
  */
 public class ClientContextServerInterceptor implements ServerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(ClientContextServerInterceptor.class);
 
+    private static final Metadata.Key<String> CLIENT_APP_ID_KEY =
+            Metadata.Key.of("x-client-app-id", Metadata.ASCII_STRING_MARSHALLER);
     private static final Metadata.Key<String> CLIENT_IP_KEY =
             Metadata.Key.of("x-client-ip", Metadata.ASCII_STRING_MARSHALLER);
     private static final Metadata.Key<String> CLIENT_HOSTNAME_KEY =
@@ -32,34 +37,21 @@ public class ClientContextServerInterceptor implements ServerInterceptor {
             ServerCallHandler<ReqT, RespT> next) {
 
         ClientContext ctx = new ClientContext(
+                headers.get(CLIENT_APP_ID_KEY),
                 headers.get(CLIENT_IP_KEY),
                 headers.get(CLIENT_HOSTNAME_KEY),
                 headers.get(CLIENT_IDC_KEY),
                 headers.get(CLIENT_GROUP_NAME_KEY));
 
-        ClientContextHolder.set(ctx);
-        log.debug("Set ClientContext: {}", ctx);
+        if (ClientContextHolder.set(ctx)) {
+            log.debug("Set ClientContext: {}", ctx);
+        } else {
+            // 理论上不会发生：Armeria 在处理 gRPC 请求时 RequestContext 一定是 current 的。
+            // 真出现说明调用不在 Armeria 请求范围内（如嵌入到非 Armeria 的 gRPC server），上下文将不可用。
+            log.warn("No Armeria RequestContext for call {}; client context is not available",
+                    call.getMethodDescriptor().getFullMethodName());
+        }
 
-        ServerCall.Listener<ReqT> delegate = next.startCall(call, headers);
-
-        return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {
-            @Override
-            public void onComplete() {
-                try {
-                    super.onComplete();
-                } finally {
-                    ClientContextHolder.clear();
-                }
-            }
-
-            @Override
-            public void onCancel() {
-                try {
-                    super.onCancel();
-                } finally {
-                    ClientContextHolder.clear();
-                }
-            }
-        };
+        return next.startCall(call, headers);
     }
 }
