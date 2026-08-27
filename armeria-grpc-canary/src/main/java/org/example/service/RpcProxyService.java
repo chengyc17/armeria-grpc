@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * 与目标 gRPC 实例交互的代理服务。
@@ -36,6 +37,8 @@ public class RpcProxyService {
 
     private static final Duration SCHEMA_TIMEOUT = Duration.ofSeconds(10);
     private static final Duration INVOKE_TIMEOUT = Duration.ofSeconds(60);
+    private static final Pattern METHOD_PATTERN = Pattern.compile("[A-Za-z0-9._-]{1,128}");
+    private static final Pattern HOST_PATTERN = Pattern.compile("[A-Za-z0-9._:-]+");
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
@@ -47,6 +50,7 @@ public class RpcProxyService {
      * 拉取实例 schema，过滤出当前 appid 的接口列表。
      */
     public List<MethodInfo> listMethods(String appId, String host, int port) {
+        validateHostPort(host, port);
         Map<String, JsonNode> schemas = fetchSchemas(host, port);
         String prefix = appId + "/api/";
         return schemas.entrySet().stream()
@@ -68,6 +72,8 @@ public class RpcProxyService {
         } catch (Exception e) {
             throw new IllegalArgumentException("request 不是合法的 JSON: " + e.getMessage());
         }
+        validateMethod(method);
+        validateHostPort(host, port);
 
         String url = baseUrl(host, port) + "/" + appId + "/api/" + method;
         log.info("Invoke {} -> {}", method, url);
@@ -135,6 +141,22 @@ public class RpcProxyService {
     private String baseUrl(String host, int port) {
         String h = host.contains(":") && !host.startsWith("[") ? "[" + host + "]" : host;
         return "http://" + h + ":" + port;
+    }
+
+    private void validateMethod(String method) {
+        if (method == null || !METHOD_PATTERN.matcher(method).matches()) {
+            throw new IllegalArgumentException("method 不合法");
+        }
+    }
+
+    private void validateHostPort(String host, int port) {
+        if (host == null || host.isBlank() || host.startsWith("http")
+                || !HOST_PATTERN.matcher(host).matches()) {
+            throw new IllegalArgumentException("host 不合法");
+        }
+        if (port <= 0 || port > 65535) {
+            throw new IllegalArgumentException("port 不合法");
+        }
     }
 
     private String truncate(String text) {

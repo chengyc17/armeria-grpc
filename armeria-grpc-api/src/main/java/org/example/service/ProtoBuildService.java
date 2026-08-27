@@ -19,12 +19,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Comparator;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 @Service
 public class ProtoBuildService {
 
     private static final Logger log = LoggerFactory.getLogger(ProtoBuildService.class);
+
+    /** Maven coordinates must be plain Maven-safe segments (no path separators, no XML specials). */
+    private static final Pattern COORDINATE_PATTERN = Pattern.compile("[A-Za-z0-9._-]{1,128}");
 
     @Value("${maven.working-dir}")
     private String workingDir;
@@ -52,31 +56,41 @@ public class ProtoBuildService {
                                   String artifactId,
                                   String version) throws Exception {
 
-        if (groupId == null || groupId.isBlank()
-                || artifactId == null || artifactId.isBlank()
-                || version == null || version.isBlank()) {
-            throw new IllegalArgumentException("groupId, artifactId, version are required");
+        if (groupId == null || !COORDINATE_PATTERN.matcher(groupId).matches()
+                || artifactId == null || !COORDINATE_PATTERN.matcher(artifactId).matches()
+                || version == null || !COORDINATE_PATTERN.matcher(version).matches()) {
+            throw new IllegalArgumentException(
+                    "groupId, artifactId, version must match [A-Za-z0-9._-]{1,128}");
         }
 
         String originalFilename = file.getOriginalFilename();
         if (originalFilename == null || !originalFilename.endsWith(".proto")) {
             throw new IllegalArgumentException("file must be a .proto file");
         }
+        // Strip any client-supplied path components; only the bare file name is used.
+        Path uploadedName = Paths.get(originalFilename).getFileName();
+        if (uploadedName == null || !uploadedName.toString().endsWith(".proto")) {
+            throw new IllegalArgumentException("file must be a .proto file");
+        }
 
         // Resolve workingDir to absolute path; fall back to java.io.tmpdir if not set
         Path baseDir;
         if (workingDir != null && !workingDir.isBlank()) {
-            baseDir = Paths.get(workingDir).toAbsolutePath();
+            baseDir = Paths.get(workingDir).toAbsolutePath().normalize();
         } else {
             baseDir = Paths.get(System.getProperty("java.io.tmpdir"), "proto-build");
         }
-        Path projectDir = baseDir.resolve(artifactId);
+        Path projectDir = baseDir.resolve(artifactId).normalize();
+        // Defense in depth: the project dir must stay inside the working dir.
+        if (!projectDir.startsWith(baseDir)) {
+            throw new IllegalArgumentException("invalid artifactId");
+        }
         // Clean up any leftover from a previous failed build
         deleteRecursively(projectDir);
         try {
             Path protoDir = projectDir.resolve("src/main/proto");
             Files.createDirectories(protoDir);
-            Path destPath = protoDir.resolve(originalFilename);
+            Path destPath = protoDir.resolve(uploadedName);
             // use Files.copy instead of transferTo to avoid FileNotFoundException
             // when Tomcat temp dir and target dir are on different filesystems (Windows)
             try (InputStream in = file.getInputStream()) {
@@ -85,9 +99,9 @@ public class ProtoBuildService {
 
             String pomTemplate = readTemplate("templates/pom-template.xml");
             String pom = pomTemplate
-                    .replace("{{groupId}}", groupId)
-                    .replace("{{artifactId}}", artifactId)
-                    .replace("{{version}}", version)
+                    .replace("{{groupId}}", escapeXml(groupId))
+                    .replace("{{artifactId}}", escapeXml(artifactId))
+                    .replace("{{version}}", escapeXml(version))
                     .replace("{{release.server.id}}", releaseServerId)
                     .replace("{{release.url}}", releaseUrl)
                     .replace("{{snapshot.server.id}}", snapshotServerId)
@@ -98,20 +112,17 @@ public class ProtoBuildService {
             String settings = settingsTemplate
                     .replace("{{release.server.id}}", releaseServerId)
                     .replace("{{snapshot.server.id}}", snapshotServerId)
-                    .replace("{{server.username}}", username)
-                    .replace("{{server.password}}", password);
+                    .replace("{{server.username}}", escapeXml(username))
+                    .replace("{{server.password}}", escapeXml(password));
             Path settingsPath = projectDir.resolve("settings.xml");
             Files.writeString(settingsPath, settings);
 
             // Use Maven Embedder — no external "mvn" command needed.
             // Maven stdout/stderr are line-buffered: each line is logged via
-            // SLF4J (so it appears with timestamps and formatting) and also
-            // captured in ByteArrayOutputStream for error reporting.
-            ByteArrayOutputStream stdout = new ByteArrayOutputStream();
-            ByteArrayOutputStream stderr = new ByteArrayOutputStream();
+            // SLF4J (so it appears with timestamps and formatting).
             MavenCli cli = new MavenCli();
-            PrintStream outPs = new PrintStream(new MavenLogOutputStream(stdout, log, false), true);
-            PrintStream errPs = new PrintStream(new MavenLogOutputStream(stderr, log, true), true);
+            PrintStream outPs = new PrintStream(new MavenLogOutputStream(log, false), true);
+            PrintStream errPs = new PrintStream(new MavenLogOutputStream(log, true), true);
             int exitCode;
             String oldMavenProjectDir = System.getProperty(
                     "maven.multiModuleProjectDirectory");
@@ -148,11 +159,11 @@ public class ProtoBuildService {
             }
             outPs.close();
             errPs.close();
-            String output = stdout.toString();
-
             if (exitCode != 0) {
-                throw new RuntimeException("Maven build failed (exit " + exitCode + "):\n"
-                        + output + "\n" + stderr.toString());
+                // Full Maven output is already in the application log via MavenLogOutputStream.
+                throw new RuntimeException(
+                        "Maven build/deploy failed (exit code " + exitCode
+                                + "), see server logs for details");
             }
 
             return groupId + ":" + artifactId + ":" + version;
@@ -171,6 +182,17 @@ public class ProtoBuildService {
         }
     }
 
+    private static String escapeXml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&apos;");
+    }
+
     private void deleteRecursively(Path path) {
         if (!Files.exists(path)) {
             return;
@@ -185,52 +207,49 @@ public class ProtoBuildService {
     }
 
     /**
-     * OutputStream that writes bytes to both a capture buffer and an SLF4J
-     * logger. Lines are buffered until {@code \n} and then logged as complete
-     * lines — so Maven output appears in the application log with proper
-     * timestamps and formatting.
+     * OutputStream that forwards Maven output to an SLF4J logger. Lines are
+     * buffered until {@code \n} and then logged as complete lines, so Maven
+     * output appears in the application log with proper timestamps and formatting.
      */
     private static class MavenLogOutputStream extends OutputStream {
 
-        private final ByteArrayOutputStream capture;
         private final Logger logger;
         private final boolean warnLevel;
-        private final StringBuilder lineBuf = new StringBuilder();
+        private final ByteArrayOutputStream lineBuf = new ByteArrayOutputStream();
 
-        MavenLogOutputStream(ByteArrayOutputStream capture, Logger logger, boolean warnLevel) {
-            this.capture = capture;
+        MavenLogOutputStream(Logger logger, boolean warnLevel) {
             this.logger = logger;
             this.warnLevel = warnLevel;
         }
 
         @Override
         public void write(int b) throws IOException {
-            capture.write(b);
-            char c = (char) b;
-            if (c == '\n') {
-                flushLine();
-            } else if (c != '\r') {
-                lineBuf.append(c);
-            }
+            handle(new byte[]{(byte) b}, 0, 1);
         }
 
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
-            capture.write(b, off, len);
+            handle(b, off, len);
+        }
+
+        /**
+         * Splits the raw bytes on '\n' and decodes each complete line as UTF-8, so
+         * multi-byte characters are not corrupted by byte-at-a-time char conversion.
+         */
+        private void handle(byte[] b, int off, int len) {
             for (int i = off; i < off + len; i++) {
-                char c = (char) b[i];
+                byte c = b[i];
                 if (c == '\n') {
                     flushLine();
                 } else if (c != '\r') {
-                    lineBuf.append(c);
+                    lineBuf.write(c);
                 }
             }
         }
 
         @Override
         public void flush() throws IOException {
-            capture.flush();
-            if (lineBuf.length() > 0) {
+            if (lineBuf.size() > 0) {
                 flushLine();
             }
         }
@@ -238,12 +257,11 @@ public class ProtoBuildService {
         @Override
         public void close() throws IOException {
             flush();
-            capture.close();
         }
 
         private void flushLine() {
-            String line = lineBuf.toString();
-            lineBuf.setLength(0);
+            String line = lineBuf.toString(StandardCharsets.UTF_8);
+            lineBuf.reset();
             if (warnLevel) {
                 logger.warn("[mvn] {}", line);
             } else {

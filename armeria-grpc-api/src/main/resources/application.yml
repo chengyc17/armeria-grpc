@@ -7,8 +7,9 @@ maven:
     snapshot:
       server-id: nexus-snapshots
       url: http://localhost:8081/repository/maven-snapshots/
-    username: admin
-    password: admin
+    # Override in production via environment variables; these are local-dev defaults only.
+    username: ${MAVEN_DEPLOY_USERNAME:admin}
+    password: ${MAVEN_DEPLOY_PASSWORD:admin}
 
 server:
   port: 9080

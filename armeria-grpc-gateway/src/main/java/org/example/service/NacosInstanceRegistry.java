@@ -7,11 +7,14 @@ import com.alibaba.nacos.api.naming.listener.EventListener;
 import com.alibaba.nacos.api.naming.listener.NamingEvent;
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import jakarta.annotation.PreDestroy;
+import org.example.common.discovery.IdcPoolSelector;
+import org.example.common.env.OpsEnvironmentPostProcessor;
 import org.example.config.GatewayProperties;
 import org.example.dto.InstanceInfo;
 import org.example.exception.ServiceUnavailableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -39,11 +42,15 @@ public class NacosInstanceRegistry {
 
     private final NamingService namingService;
     private final GatewayProperties properties;
+    private final String idc;
     private final Map<String, ServiceCache> caches = new ConcurrentHashMap<>();
 
-    public NacosInstanceRegistry(NamingService namingService, GatewayProperties properties) {
+    public NacosInstanceRegistry(NamingService namingService, GatewayProperties properties,
+                                 Environment environment) {
         this.namingService = namingService;
         this.properties = properties;
+        // 就近访问：优先取 ops/env.properties 的 idc，其次取 gateway.nacos.idc（统一走 common 的共享方法）
+        this.idc = OpsEnvironmentPostProcessor.idc(environment, properties.getNacos().getIdc());
     }
 
     /**
@@ -105,12 +112,12 @@ public class NacosInstanceRegistry {
         }
         ServiceCache cache;
         try {
-            cache = new ServiceCache(appId, toInstanceInfos(queryNacos(appId)));
+            cache = new ServiceCache(appId, idc, toInstanceInfos(queryNacos(appId)));
         } catch (ServiceUnavailableException e) {
             // 负缓存：Nacos 不可用时不再逐请求重试，由定时刷新自动恢复
             log.warn("Load Nacos instances failed, cache empty for now. appId={}, error={}",
                     appId, e.getMessage());
-            cache = new ServiceCache(appId, List.of());
+            cache = new ServiceCache(appId, idc, List.of());
         }
         caches.put(appId, cache);
         subscribeIfNeeded(cache);
@@ -165,14 +172,16 @@ public class NacosInstanceRegistry {
     private static final class ServiceCache {
 
         private final String appId;
+        private final String idc;
         private final NacosEndpointGroup group = new NacosEndpointGroup();
         private final EventListener listener;
         private volatile boolean subscribed;
         private volatile Instant updatedAt = Instant.now();
         private volatile List<InstanceInfo> instances = List.of();
 
-        ServiceCache(String appId, List<InstanceInfo> initial) {
+        ServiceCache(String appId, String idc, List<InstanceInfo> initial) {
             this.appId = appId;
+            this.idc = idc;
             update(initial);
             this.listener = this::handle;
         }
@@ -189,7 +198,12 @@ public class NacosInstanceRegistry {
             List<InstanceInfo> copy = List.copyOf(newInstances);
             this.instances = copy;
             this.updatedAt = Instant.now();
-            this.group.update(copy);
+            List<InstanceInfo> pool = IdcPoolSelector.selectPool(copy, idc, InstanceInfo::metadata);
+            this.group.update(pool);
+            if (pool.size() < copy.size()) {
+                log.info("Routing appId={} prefers {} same-idc instances (idc={})",
+                        appId, pool.size(), idc);
+            }
         }
 
         ServiceSnapshot snapshot() {

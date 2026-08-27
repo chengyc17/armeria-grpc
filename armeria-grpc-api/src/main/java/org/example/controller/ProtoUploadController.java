@@ -1,6 +1,8 @@
 package org.example.controller;
 
 import org.example.service.ProtoBuildService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +16,8 @@ import java.util.concurrent.locks.ReentrantLock;
 @RestController
 @RequestMapping("/api/proto")
 public class ProtoUploadController {
+
+    private static final Logger log = LoggerFactory.getLogger(ProtoUploadController.class);
 
     private final ProtoBuildService protoBuildService;
     private final ReentrantLock buildLock = new ReentrantLock();
@@ -42,9 +46,10 @@ public class ProtoUploadController {
                     "error", e.getMessage()
             ));
         } catch (Exception e) {
+            log.error("Proto build/deploy failed", e);
             return ResponseEntity.internalServerError().body(Map.of(
                     "message", "build failed",
-                    "error", e.getMessage()
+                    "error", "see server logs for details"
             ));
         } finally {
             buildLock.unlock();

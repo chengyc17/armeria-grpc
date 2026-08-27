@@ -36,9 +36,6 @@
         <maven-embedder.version>3.8.6</maven-embedder.version>
         <maven-resolver.version>1.7.3</maven-resolver.version>
         <maven-wagon.version>3.5.3</maven-wagon.version>
-        <!-- 外部依赖版本 -->
-        <mywork-demo.version>1.0.10-SNAPSHOT</mywork-demo.version>
-        <mywork-demo2.version>1.0.99-SNAPSHOT</mywork-demo2.version>
     </properties>
 
     <dependencyManagement>
@@ -77,14 +74,14 @@
                 <version>${nacos-client.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.abc.eee</groupId>
-                <artifactId>mywork-demo</artifactId>
-                <version>${mywork-demo.version}</version>
+                <groupId>com.abc.order</groupId>
+                <artifactId>order-server</artifactId>
+                <version>1.0.0</version>
             </dependency>
             <dependency>
-                <groupId>com.abc.eee</groupId>
-                <artifactId>mywork-demo2</artifactId>
-                <version>${mywork-demo2.version}</version>
+                <groupId>com.abc.product</groupId>
+                <artifactId>product-server</artifactId>
+                <version>1.0.1</version>
             </dependency>
             <!-- 覆盖 spring-boot-dependencies 内 junit-bom 的默认版本（5.10.1 -> 5.10.3） -->
             <dependency>

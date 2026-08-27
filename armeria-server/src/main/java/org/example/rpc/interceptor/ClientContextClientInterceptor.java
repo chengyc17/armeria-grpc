@@ -11,7 +11,7 @@ import org.example.rpc.context.ClientContext;
 
 /**
  * gRPC {@link ClientInterceptor} that attaches client context metadata
- * (appId, IP, hostname, IDC, groupName) to every outbound RPC call.
+ * (appId, IP, hostname, IDC) to every outbound RPC call.
  */
 public class ClientContextClientInterceptor implements ClientInterceptor {
 
@@ -23,8 +23,6 @@ public class ClientContextClientInterceptor implements ClientInterceptor {
             Metadata.Key.of("x-client-hostname", Metadata.ASCII_STRING_MARSHALLER);
     private static final Metadata.Key<String> CLIENT_IDC_KEY =
             Metadata.Key.of("x-client-idc", Metadata.ASCII_STRING_MARSHALLER);
-    private static final Metadata.Key<String> CLIENT_GROUP_NAME_KEY =
-            Metadata.Key.of("x-client-group-name", Metadata.ASCII_STRING_MARSHALLER);
 
     private final ClientContext clientContext;
 
@@ -54,9 +52,6 @@ public class ClientContextClientInterceptor implements ClientInterceptor {
                 }
                 if (clientContext.getIdc() != null) {
                     headers.put(CLIENT_IDC_KEY, clientContext.getIdc());
-                }
-                if (clientContext.getGroupName() != null) {
-                    headers.put(CLIENT_GROUP_NAME_KEY, clientContext.getGroupName());
                 }
                 super.start(responseListener, headers);
             }

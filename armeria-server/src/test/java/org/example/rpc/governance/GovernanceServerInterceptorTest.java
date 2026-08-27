@@ -150,24 +150,6 @@ class GovernanceServerInterceptorTest {
         return ClientCalls.blockingUnaryCall(ch, ECHO, CallOptions.DEFAULT, "ping");
     }
 
-    /** 脱离测试框架的直接运行入口 */
-    public static void main(String[] args) {
-        GovernanceServerInterceptorTest test = new GovernanceServerInterceptorTest();
-        try {
-            test.blacklistedAppIdIsRejected();
-            System.out.println("[PASS] blacklistedAppIdIsRejected");
-
-            test.allowedAppIdPasses();
-            System.out.println("[PASS] allowedAppIdPasses");
-
-            test.whitelistDeniesCallersWithoutAppId();
-            System.out.println("[PASS] whitelistDeniesCallersWithoutAppId");
-        } finally {
-            tearDown();
-        }
-        System.out.println("ALL TESTS PASSED");
-    }
-
     /** 返回可变 soa.json 内容的 AppConfigService 桩（避免依赖 Mockito 的运行时 instrumentation） */
     private static final class StubAppConfigService extends AppConfigService {
         StubAppConfigService() {

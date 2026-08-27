@@ -56,6 +56,7 @@ public class AppConfigService implements InitializingBean, DisposableBean {
     private final Map<String, ConfigSnapshot> snapshots = new ConcurrentHashMap<>();
     private final Map<String, Listener> listeners = new ConcurrentHashMap<>();
     private final Map<String, ScheduledFuture<?>> retryFutures = new ConcurrentHashMap<>();
+    private final Map<String, ScheduledFuture<?>> initialLoadFutures = new ConcurrentHashMap<>();
 
     public AppConfigService(ConfigService configService, NacosConfigProperties properties,
                             List<String> dataIds, String group,
@@ -91,8 +92,44 @@ public class AppConfigService implements InitializingBean, DisposableBean {
             snapshots.put(dataId, parse(dataId, content));
             log.info("Loaded Nacos config dataId={}, group={}", dataId, group);
         } catch (Exception e) {
-            log.warn("Failed to load Nacos config dataId={}, group={}: {}", dataId, group, e.getMessage());
+            log.warn("Failed to load Nacos config dataId={}, group={}, will retry in {}ms: {}",
+                    dataId, group, properties.getRetryIntervalMs(), e.getMessage());
+            scheduleInitialLoadRetry(dataId);
         }
+    }
+
+    /**
+     * Retries the initial config load after a startup-time Nacos failure, so a
+     * transient Nacos outage does not leave the config permanently empty.
+     */
+    private void scheduleInitialLoadRetry(String dataId) {
+        ScheduledFuture<?> existing = initialLoadFutures.get(dataId);
+        if (existing != null && !existing.isDone()) {
+            return;
+        }
+        ScheduledFuture<?> future = retryExecutor.scheduleWithFixedDelay(() -> {
+            try {
+                String content = configService.getConfig(dataId, group, properties.getTimeoutMs());
+                if (content == null || content.isBlank()) {
+                    log.info("Nacos config dataId={}, group={} not configured, stop retrying", dataId, group);
+                    ScheduledFuture<?> retry = initialLoadFutures.remove(dataId);
+                    if (retry != null) {
+                        retry.cancel(false);
+                    }
+                    return;
+                }
+                snapshots.put(dataId, parse(dataId, content));
+                log.info("Loaded Nacos config dataId={}, group={} after retry", dataId, group);
+                ScheduledFuture<?> retry = initialLoadFutures.remove(dataId);
+                if (retry != null) {
+                    retry.cancel(false);
+                }
+            } catch (Exception e) {
+                log.warn("Retry to load Nacos config dataId={}, group={} failed: {}",
+                        dataId, group, e.getMessage());
+            }
+        }, properties.getRetryIntervalMs(), properties.getRetryIntervalMs(), TimeUnit.MILLISECONDS);
+        initialLoadFutures.put(dataId, future);
     }
 
     private void subscribe(String dataId) {
@@ -353,6 +390,8 @@ public class AppConfigService implements InitializingBean, DisposableBean {
 
     @Override
     public void destroy() {
+        initialLoadFutures.values().forEach(future -> future.cancel(false));
+        initialLoadFutures.clear();
         retryFutures.values().forEach(future -> future.cancel(false));
         retryFutures.clear();
         retryExecutor.shutdownNow();

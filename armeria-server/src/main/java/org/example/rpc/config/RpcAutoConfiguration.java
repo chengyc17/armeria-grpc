@@ -6,7 +6,9 @@ import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.grpc.GrpcService;
 import com.linecorp.armeria.server.grpc.GrpcServiceBuilder;
 import io.grpc.BindableService;
-import io.netty.util.internal.StringUtil;
+import org.example.common.env.AppIdEnvironmentPostProcessor;
+import org.example.common.env.AppIdResolver;
+import org.example.common.env.OpsEnvironmentPostProcessor;
 import org.example.config.AppConfigService;
 import org.example.rpc.client.GrpcClientBeanPostProcessor;
 import org.example.rpc.context.ClientContext;
@@ -22,14 +24,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
-import org.springframework.util.StringUtils;
 
 import java.net.InetAddress;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
@@ -43,7 +48,7 @@ public class RpcAutoConfiguration {
     public NamingService namingService(RpcProperties properties, Environment environment) throws Exception {
         Properties props = new Properties();
         String addr = Optional.ofNullable(properties).map(x -> x.getNacos()).map(x -> x.getServerAddr()).orElse(null);
-        if (StringUtil.isNullOrEmpty(addr)) {
+        if (addr == null || addr.isBlank()) {
             throw new IllegalStateException("nacos register address can not be empty");
         }
         props.setProperty("serverAddr", addr);
@@ -61,13 +66,16 @@ public class RpcAutoConfiguration {
                                        Environment environment) throws Exception {
         String hostname = InetAddress.getLocalHost().getHostName();
         String ip = InetAddress.getLocalHost().getHostAddress();
-        String idc = properties.getClient().getIdc();
-        String groupName = properties.getClient().getGroupName();
-        // 自身 appId：优先取 proto 的 option (app_id)；纯客户端进程没有 @GrpcService，
-        String appId = GrpcServices.findAppId(context);
-        log.info("ClientContext created: appId={}, ip={}, hostname={}, idc={}, groupName={}",
-                appId, ip, hostname, idc, groupName);
-        return new ClientContext(appId, ip, hostname, idc, groupName);
+        // idc 来自机器 ops 目录 env.properties（统一走 common 的共享方法），缺失则 fail fast
+        String idc = OpsEnvironmentPostProcessor.requireIdc(environment);
+        // 自身 appId：优先取 proto 的 option (app_id)；纯客户端进程没有 @GrpcService 时，
+        // 回退到 META-INF/app.config 的 app.id（同时存在时必须一致，由 AppIdResolver 校验）
+        String protoAppId = GrpcServices.findAppId(context);
+        String appId = AppIdResolver.resolve(
+                environment.getProperty(AppIdEnvironmentPostProcessor.APP_ID_PROPERTY), protoAppId);
+        log.info("ClientContext created: appId={}, ip={}, hostname={}, idc={}",
+                appId, ip, hostname, idc);
+        return new ClientContext(appId, ip, hostname, idc);
     }
 
     @Bean
@@ -88,27 +96,40 @@ public class RpcAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnProperty(prefix = "rpc", name = "schema-enabled", havingValue = "true", matchIfMissing = true)
     public SchemaEndpoint schemaEndpoint(GrpcJsonSchemaGenerator generator) {
         return new SchemaEndpoint(generator);
     }
 
     @Bean
+    // 注意：不要用 @ConditionalOnBean(annotation = GrpcService.class)——Spring Boot 3.2 的
+    // OnBeanCondition 在 @Bean 方法上只给 annotation 时会额外推导方法返回类型作为必匹配的
+    // type 条件（如 Server/GovernanceConfigManager，自引用），导致条件永远不成立。
+    // 这里按类型匹配：@GrpcService 实现都是 BindableService bean。
+    @ConditionalOnBean(BindableService.class)
     public GovernanceConfigManager governanceConfigManager(ObjectProvider<AppConfigService> configServiceProvider,
-                                                           ApplicationContext context) {
-        return new GovernanceConfigManager(configServiceProvider, GrpcServices.resolveAppId(context));
+                                                           ApplicationContext context,
+                                                           Environment environment) {
+        return new GovernanceConfigManager(configServiceProvider,
+                AppIdResolver.resolve(
+                        environment.getProperty(AppIdEnvironmentPostProcessor.APP_ID_PROPERTY),
+                        GrpcServices.resolveAppId(context)));
     }
 
     @Bean
+    @ConditionalOnBean(GovernanceConfigManager.class)
     public GovernanceServerInterceptor governanceServerInterceptor(GovernanceConfigManager manager) {
         return new GovernanceServerInterceptor(manager);
     }
 
     @Bean(destroyMethod = "stop")
+    @ConditionalOnBean(BindableService.class)
     public Server armeriaServer(ApplicationContext ctx, RpcProperties properties,
                                 NacosInstanceRegistrar registrar,
                                 SchemaEndpoint schemaEndpoint,
                                 ClientContextServerInterceptor serverInterceptor,
-                                ObjectProvider<GovernanceServerInterceptor> governanceInterceptorProvider) throws Exception {
+                                ObjectProvider<GovernanceServerInterceptor> governanceInterceptorProvider,
+                                Environment environment) throws Exception {
 
         GrpcServiceBuilder grpcServiceBuilder = GrpcService.builder()
                 .enableUnframedRequests(true)
@@ -144,7 +165,12 @@ public class RpcAutoConfiguration {
 
         String host = InetAddress.getLocalHost().getHostAddress();
         try {
-            registrar.register(appId, host, properties.getPort());
+            // idc 已由 clientContext 创建时 fail-fast 校验，这里直接取（必非空）
+            Map<String, String> metadata = new HashMap<>();
+            metadata.put(NacosInstanceRegistrar.IDC_METADATA_KEY,
+                    OpsEnvironmentPostProcessor.requireIdc(environment));
+            registrar.register(appId, host, properties.getPort(),
+                    properties.getNacos().getWeight(), metadata);
         } catch (Exception e) {
             // 注册失败时停掉已启动的 Armeria server，避免端口被泄漏占用
             // （否则进程会残留监听端口，下一次启动报 Address already in use: bind）

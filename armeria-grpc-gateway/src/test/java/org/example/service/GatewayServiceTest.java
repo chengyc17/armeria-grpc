@@ -14,6 +14,7 @@ import org.example.config.GatewayProperties;
 import org.example.support.FakeNamingService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.StandardEnvironment;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -92,7 +93,8 @@ class GatewayServiceTest {
     private Server startGateway(GatewayProperties properties, List<Instance> instances) throws Exception {
         FakeNamingService naming = new FakeNamingService();
         naming.defaultInstances(instances);
-        NacosInstanceRegistry registry = new NacosInstanceRegistry(naming.proxy(), properties);
+        NacosInstanceRegistry registry =
+                new NacosInstanceRegistry(naming.proxy(), properties, new StandardEnvironment());
         GatewayService gatewayService = new GatewayService(registry, properties);
         return startServer(Server.builder()
                 .http(0)

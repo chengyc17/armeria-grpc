@@ -1,5 +1,6 @@
-# Spring Boot 3.x 发现 EnvironmentPostProcessor 走的是 META-INF/spring.factories
-# （SpringApplication.getSpringFactoriesInstances -> SpringFactoriesLoader.forDefaultResourceLocation），
-# 而不是 META-INF/spring/org.springframework.boot.env.EnvironmentPostProcessor；
-# 缺少该注册会导致 ${env} 占位符无法解析、Nacos namespace 变成非法字符串。
-org.springframework.boot.env.EnvironmentPostProcessor=org.example.common.env.OpsEnvironmentPostProcessor
+# Spring Boot 3.2 loads EnvironmentPostProcessors exclusively from
+# META-INF/spring.factories (EnvironmentPostProcessorsFactory.fromSpringFactories).
+# Without these entries, ${env} placeholders and the app identity from
+# META-INF/app.config would not resolve. When upgrading to Spring Boot 4, migrate
+# this registration to META-INF/spring/org.springframework.boot.env.EnvironmentPostProcessor.
+org.springframework.boot.env.EnvironmentPostProcessor=org.example.common.env.OpsEnvironmentPostProcessor,org.example.common.env.AppIdEnvironmentPostProcessor

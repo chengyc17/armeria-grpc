@@ -2,6 +2,7 @@ package org.example.service;
 
 import com.linecorp.armeria.client.Endpoint;
 import com.linecorp.armeria.client.endpoint.DynamicEndpointGroup;
+import org.example.common.discovery.EndpointWeights;
 import org.example.dto.InstanceInfo;
 
 import java.util.List;
@@ -23,18 +24,8 @@ public final class NacosEndpointGroup extends DynamicEndpointGroup {
     public void update(List<InstanceInfo> instances) {
         List<Endpoint> endpoints = instances.stream()
                 .map(instance -> Endpoint.of(instance.ip(), instance.port())
-                        .withWeight(toArmeriaWeight(instance.weight())))
+                        .withWeight(EndpointWeights.toArmeriaWeight(instance.weight())))
                 .toList();
         setEndpoints(endpoints);
-    }
-
-    /**
-     * Nacos 权重默认 1.0；Armeria {@link Endpoint} 默认权重 1000，按比例放大并保证为正。
-     */
-    private static int toArmeriaWeight(double weight) {
-        if (weight <= 0) {
-            return 1;
-        }
-        return Math.max(1, (int) Math.round(weight * 1000));
     }
 }

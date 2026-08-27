@@ -5,12 +5,16 @@ This is a Java 17 multi-module Maven project: a Spring Boot web app that builds 
 ## Project Structure & Module Organization
 
 - `armeria-grpc-api/` — Spring Boot web app (port 9080). Controllers live in `src/main/java/org/example/controller/`, services in `src/main/java/org/example/service/`. It accepts `.proto` uploads, generates stubs via embedded Maven, and deploys them to a local Nexus. Resource templates and configuration are under `src/main/resources/templates/` and `src/main/resources/application.yml`.
-- `armeria-server/` — gRPC infrastructure library: `@GrpcClient`/`@GrpcService` annotations, auto-configuration, client-context interceptors, and a JSON schema endpoint under `src/main/java/org/example/rpc/`.
-- `test/` — experimental module depending on `com.abc.eee:mywork-demo:1.0.0-SNAPSHOT` (resolved from the local Nexus); contains a sample `GrpcTest` service.
+- `armeria-server/` — gRPC infrastructure library: `@GrpcService` annotation, auto-configuration, client-context interceptors, governance (rate limit / circuit breaker / allow-deny lists), and a JSON schema endpoint under `src/main/java/org/example/rpc/`.
+- `armeria-grpc-common/` — shared annotations, application identity loading (`META-INF/app.config` + proto `app_id`, with consistency check), and the ops `env.properties` `EnvironmentPostProcessor`.
+- `armeria-grpc-config/` — Nacos config-center client (`data-ids` pull + subscription, hot updates).
+- `armeria-grpc-gateway/` — non-blocking Armeria HTTP gateway (`/{appId}/api/{method}` -> Nacos-discovered instances).
+- `armeria-grpc-canary/` — gRPC test console (port 9081) for browsing namespaces/instances and invoking methods via HTTP/JSON.
+- `example-server/` / `example-client/` — sample gRPC provider/consumer depending on `com.abc.order:order-server` and `com.abc.product:product-server`.
 
 ## Build, Test, and Development Commands
 
-- `mvn clean install` — compile and package all modules, then install to the local Maven repository. Requires the local Nexus (`http://localhost:8081`) to resolve the `mywork-demo` dependency.
+- `mvn clean install` — compile and package all modules, then install to the local Maven repository. The example modules require `com.abc.order:order-server` and `com.abc.product:product-server` (resolved from the local repository/Nexus).
 - `mvn clean compile` — compile all modules without packaging or installing.
 - `mvn spring-boot:run -pl armeria-grpc-api` — run the API application locally (port 9080).
 - `mvn test` — run unit tests via the default Surefire configuration.

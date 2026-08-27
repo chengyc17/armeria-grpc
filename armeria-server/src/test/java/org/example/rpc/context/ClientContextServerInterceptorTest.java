@@ -47,8 +47,6 @@ class ClientContextServerInterceptorTest {
             Metadata.Key.of("x-client-hostname", Metadata.ASCII_STRING_MARSHALLER);
     private static final Metadata.Key<String> CLIENT_IDC_KEY =
             Metadata.Key.of("x-client-idc", Metadata.ASCII_STRING_MARSHALLER);
-    private static final Metadata.Key<String> CLIENT_GROUP_NAME_KEY =
-            Metadata.Key.of("x-client-group-name", Metadata.ASCII_STRING_MARSHALLER);
 
     private static final MethodDescriptor<String, String> ECHO =
             MethodDescriptor.<String, String>newBuilder()
@@ -103,7 +101,7 @@ class ClientContextServerInterceptorTest {
 
     @Test
     void contextVisibleInServiceMethod() throws Exception {
-        String resp = call("mywork-demo", "10.1.2.3", "host-a", "idc-a", "group-a");
+        String resp = call("mywork-demo", "10.1.2.3", "host-a", "idc-a");
         assertEquals("ok:ping", resp);
 
         ClientContext ctx = observed.get(5, TimeUnit.SECONDS);
@@ -112,14 +110,13 @@ class ClientContextServerInterceptorTest {
         assertEquals("10.1.2.3", ctx.getClientIp());
         assertEquals("host-a", ctx.getHostname());
         assertEquals("idc-a", ctx.getIdc());
-        assertEquals("group-a", ctx.getGroupName());
     }
 
     @Test
     void contextPropagatesToBlockingTaskExecutor() throws Exception {
         observeInBlockingExecutor = true;
         try {
-            String resp = call("mywork-demo", "10.9.9.9", "host-b", "idc-b", "group-b");
+            String resp = call("mywork-demo", "10.9.9.9", "host-b", "idc-b");
             assertEquals("ok:ping", resp);
 
             ClientContext ctx = observed.get(5, TimeUnit.SECONDS);
@@ -134,7 +131,7 @@ class ClientContextServerInterceptorTest {
 
     @Test
     void noStaleContextBetweenCalls() throws Exception {
-        call("app-1", "1.1.1.1", "h1", "i1", "g1");
+        call("app-1", "1.1.1.1", "h1", "i1");
         ClientContext first = observed.get(5, TimeUnit.SECONDS);
         assertNotNull(first);
         assertEquals("app-1", first.getAppId());
@@ -142,7 +139,7 @@ class ClientContextServerInterceptorTest {
 
         // 第二次调用不带任何上下文头：不应看到上一次调用的残留
         observed = new CompletableFuture<>();
-        String resp = call(null, null, null, null, null);
+        String resp = call(null, null, null, null);
         assertEquals("ok:ping", resp);
 
         ClientContext second = observed.get(5, TimeUnit.SECONDS);
@@ -151,7 +148,6 @@ class ClientContextServerInterceptorTest {
         assertNull(second.getClientIp());
         assertNull(second.getHostname());
         assertNull(second.getIdc());
-        assertNull(second.getGroupName());
     }
 
     @Test
@@ -166,7 +162,7 @@ class ClientContextServerInterceptorTest {
         server.stop().join();
     }
 
-    private String call(String appId, String ip, String hostname, String idc, String groupName) {
+    private String call(String appId, String ip, String hostname, String idc) {
         Metadata headers = new Metadata();
         if (appId != null) {
             headers.put(CLIENT_APP_ID_KEY, appId);
@@ -180,36 +176,9 @@ class ClientContextServerInterceptorTest {
         if (idc != null) {
             headers.put(CLIENT_IDC_KEY, idc);
         }
-        if (groupName != null) {
-            headers.put(CLIENT_GROUP_NAME_KEY, groupName);
-        }
         Channel ch = ClientInterceptors.intercept(
                 channel, MetadataUtils.newAttachHeadersInterceptor(headers));
         return ClientCalls.blockingUnaryCall(ch, ECHO, CallOptions.DEFAULT, "ping");
-    }
-
-    /** 脱离测试框架的直接运行入口 */
-    public static void main(String[] args) throws Exception {
-        ClientContextServerInterceptorTest test = new ClientContextServerInterceptorTest();
-        try {
-            test.resetObserved();
-            test.contextVisibleInServiceMethod();
-            System.out.println("[PASS] contextVisibleInServiceMethod");
-
-            test.resetObserved();
-            test.contextPropagatesToBlockingTaskExecutor();
-            System.out.println("[PASS] contextPropagatesToBlockingTaskExecutor");
-
-            test.resetObserved();
-            test.noStaleContextBetweenCalls();
-            System.out.println("[PASS] noStaleContextBetweenCalls");
-
-            test.returnsNullOutsideRequest();
-            System.out.println("[PASS] returnsNullOutsideRequest");
-        } finally {
-            tearDown();
-        }
-        System.out.println("ALL TESTS PASSED");
     }
 
     private enum StringMarshaller implements MethodDescriptor.Marshaller<String> {

@@ -9,7 +9,6 @@ public class RpcProperties {
     private boolean schemaEnabled = true;
 
     private final Nacos nacos = new Nacos();
-    private final Client client = new Client();
 
     public int getPort() { return port; }
     public void setPort(int port) { this.port = port; }
@@ -18,25 +17,17 @@ public class RpcProperties {
     public void setSchemaEnabled(boolean schemaEnabled) { this.schemaEnabled = schemaEnabled; }
 
     public Nacos getNacos() { return nacos; }
-    public Client getClient() { return client; }
 
     public static class Nacos {
         private String serverAddr = "";
 
+        /** Instance scheduling weight registered to Nacos. Default 1.0 (Nacos default). */
+        private double weight = 1.0;
+
         public String getServerAddr() { return serverAddr; }
         public void setServerAddr(String serverAddr) { this.serverAddr = serverAddr; }
-    }
 
-    public static class Client {
-        /** Data center identifier (e.g. "bj", "sh", "gz"). */
-        private String idc = "";
-        /** Kubernetes deployment / group name. Set via rpc.client.group-name in application.yml. */
-        private String groupName = "";
-
-        public String getIdc() { return idc; }
-        public void setIdc(String idc) { this.idc = idc; }
-
-        public String getGroupName() { return groupName; }
-        public void setGroupName(String groupName) { this.groupName = groupName; }
+        public double getWeight() { return weight; }
+        public void setWeight(double weight) { this.weight = weight; }
     }
 }

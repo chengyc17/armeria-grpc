@@ -51,8 +51,17 @@ public class GovernanceServerInterceptor implements ServerInterceptor {
                 return new ServerCall.Listener<>() {};
             }
             // 熔断启用时才需要包装 call 来上报结果；关闭时直接放行，避免每个请求额外分配包装对象
-            ServerCall.Listener<ReqT> delegate = next.startCall(new ReportingServerCall<>(call, configManager), headers);
-            return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {};
+            ReportingServerCall<ReqT, RespT> reportingCall = new ReportingServerCall<>(call, configManager);
+            ServerCall.Listener<ReqT> delegate = next.startCall(reportingCall, headers);
+            return new ForwardingServerCallListener.SimpleForwardingServerCallListener<>(delegate) {
+                @Override
+                public void onCancel() {
+                    // Client-side cancellation is a failed call from the breaker's perspective;
+                    // without this, cancelled calls are never counted.
+                    reportingCall.reportFailure();
+                    super.onCancel();
+                }
+            };
         }
         return next.startCall(call, headers);
     }
@@ -85,6 +94,10 @@ public class GovernanceServerInterceptor implements ServerInterceptor {
             }
             reported = true;
             configManager.reportCircuitBreakerResult(status.isOk());
+        }
+
+        void reportFailure() {
+            report(Status.CANCELLED);
         }
     }
 }

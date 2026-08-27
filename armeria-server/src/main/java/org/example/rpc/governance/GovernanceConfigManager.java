@@ -58,6 +58,9 @@ public class GovernanceConfigManager {
      */
     @EventListener(AppConfigChangedEvent.class)
     public void onConfigChanged(AppConfigChangedEvent event) {
+        if (!AppConfigService.SOA_CONFIG_DATA_ID.equalsIgnoreCase(event.getDataId())) {
+            return;
+        }
         reload();
     }
 

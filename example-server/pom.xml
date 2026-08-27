@@ -17,7 +17,6 @@
         <dependency>
             <groupId>com.abc.order</groupId>
             <artifactId>order-server</artifactId>
-            <version>1.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.example</groupId>

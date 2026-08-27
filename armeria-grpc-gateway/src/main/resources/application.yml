@@ -6,9 +6,11 @@ gateway:
   # Armeria 网关端口（非阻塞，HTTP/1.1 + HTTP/2）
   port: 9082
   nacos:
-    # namespace 默认取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: ~/ops/env.properties）
+    # namespace 默认取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: /ops/env.properties）
     server-addr: 127.0.0.1:8848
     group: DEFAULT_GROUP
+    # 网关自身机房（就近访问用）；为空时取本机 ops 目录 env.properties 中的 idc
+    # idc: bj
     # 兜底刷新间隔（毫秒）；订阅推送偶发丢失时保证缓存最终一致
     refresh-interval-ms: 60000
   proxy:
@@ -18,8 +20,8 @@ gateway:
     response-timeout-ms: 60000
     # 客户端空闲连接保活时间（毫秒）
     idle-timeout-ms: 60000
-    # 每个后端实例的最大连接数；HTTP/1.1 下决定单实例并发上限，HTTP/2 多路复用则几乎不受限
-    max-num-connections-per-endpoint: 8
+    # HTTP/1.1 下每个后端端点的 event loop 数（决定并发连接上限）；HTTP/2 多路复用则几乎不受限
+    max-num-event-loops-per-endpoint: 8
     # 请求/响应体大小上限（字节），默认 10 MiB
     max-request-length: 10485760
     max-response-length: 10485760

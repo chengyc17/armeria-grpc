@@ -10,6 +10,7 @@ import com.example.orderservice.OrderStatus;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import org.example.rpc.annotation.GrpcService;
+import org.example.rpc.context.ClientContextHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,8 +22,9 @@ import java.util.concurrent.atomic.AtomicLong;
  * 订单服务 gRPC 实现（内存版示例）。
  *
  * <p>由 {@code @GrpcService} 标记，armeria-server 自动配置会在启动时找到它，
- * 读取 {@code order_service.proto} 中 {@code option (app_id) = "100004337"}，
- * 以该 appId 将当前实例注册到 Nacos。
+ * 以应用身份 {@code appid=100004337}（来自 {@code META-INF/app.config}，与
+ * {@code order_service.proto} 中 {@code option (app_id) = "100004337"} 一致）
+ * 将当前实例注册到 Nacos。
  */
 @GrpcService
 public class OrderServiceImpl extends OrderServiceGrpc.OrderServiceImplBase {
@@ -56,14 +58,9 @@ public class OrderServiceImpl extends OrderServiceGrpc.OrderServiceImplBase {
 
     @Override
     public void getOrder(GetOrderRequest request, StreamObserver<GetOrderResponse> responseObserver) {
-        Order order = orders.get(request.getOrderId());
-        if (order == null) {
-            log.warn("getOrder -> order not found: {}", request.getOrderId());
-            responseObserver.onError(Status.NOT_FOUND
-                    .withDescription("order not found: " + request.getOrderId())
-                    .asRuntimeException());
-            return;
-        }
+        log.info(String.format("请求来自：client appid:%s, client ip: %s", ClientContextHolder.get().getAppId(),ClientContextHolder.get().getClientIp()));
+
+        Order order = Order.newBuilder().setId(1L).setTotalAmount(200d).setUserId(22222L).build();
 
         log.info("getOrder -> orderId={}, status={}", order.getId(), order.getStatus());
         responseObserver.onNext(GetOrderResponse.newBuilder()

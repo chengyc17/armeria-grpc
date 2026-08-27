@@ -45,11 +45,6 @@
             <groupId>com.linecorp.armeria</groupId>
             <artifactId>armeria-grpc</artifactId>
         </dependency>
-        <dependency>
-            <groupId>com.linecorp.armeria</groupId>
-            <artifactId>armeria-logback</artifactId>
-        </dependency>
-
         <!-- Nacos -->
         <dependency>
             <groupId>com.alibaba.nacos</groupId>
@@ -99,6 +94,7 @@
                 <configuration>
                     <source>${maven.compiler.source}</source>
                     <target>${maven.compiler.target}</target>
+                    <parameters>true</parameters>
                 </configuration>
             </plugin>
             <plugin>

@@ -6,8 +6,12 @@ import com.alibaba.nacos.api.naming.pojo.Instance;
 import org.example.config.GatewayProperties;
 import org.example.support.FakeNamingService;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -17,7 +21,15 @@ class NacosInstanceRegistryTest {
 
     private final FakeNamingService naming = new FakeNamingService();
     private final NacosInstanceRegistry registry =
-            new NacosInstanceRegistry(naming.proxy(), new GatewayProperties());
+            new NacosInstanceRegistry(naming.proxy(), new GatewayProperties(), env(null));
+
+    private static Environment env(String idc) {
+        StandardEnvironment environment = new StandardEnvironment();
+        if (idc != null && !idc.isBlank()) {
+            environment.getPropertySources().addFirst(new MapPropertySource("test", Map.of("idc", idc)));
+        }
+        return environment;
+    }
 
     private Instance instance(String ip, int port, boolean healthy) {
         Instance instance = new Instance();
@@ -84,6 +96,51 @@ class NacosInstanceRegistryTest {
         NacosEndpointGroup group = registry.endpointGroup("order");
 
         assertEquals(2000, group.endpoints().get(0).weight());
+    }
+
+    @Test
+    void prefersSameIdcInstancesForRouting() {
+        Instance bj = instance("10.0.0.1", 8080, true);
+        bj.setMetadata(Map.of("idc", "bj"));
+        Instance sh = instance("10.0.0.2", 8080, true);
+        sh.setMetadata(Map.of("idc", "sh"));
+        naming.defaultInstances(List.of(bj, sh));
+
+        NacosInstanceRegistry bjRegistry =
+                new NacosInstanceRegistry(naming.proxy(), new GatewayProperties(), env("bj"));
+        NacosEndpointGroup group = bjRegistry.endpointGroup("order");
+
+        assertEquals(1, group.endpoints().size());
+        assertEquals("10.0.0.1", group.endpoints().get(0).host());
+    }
+
+    @Test
+    void fallsBackToAllInstancesWhenNoSameIdcExists() {
+        Instance sh = instance("10.0.0.2", 8080, true);
+        sh.setMetadata(Map.of("idc", "sh"));
+        naming.defaultInstances(List.of(sh));
+
+        NacosInstanceRegistry bjRegistry =
+                new NacosInstanceRegistry(naming.proxy(), new GatewayProperties(), env("bj"));
+        NacosEndpointGroup group = bjRegistry.endpointGroup("order");
+
+        assertEquals(1, group.endpoints().size());
+        assertEquals("10.0.0.2", group.endpoints().get(0).host());
+    }
+
+    @Test
+    void snapshotKeepsAllInstancesWhileRoutingPrefersSameIdc() {
+        Instance bj = instance("10.0.0.1", 8080, true);
+        bj.setMetadata(Map.of("idc", "bj"));
+        Instance sh = instance("10.0.0.2", 8080, true);
+        sh.setMetadata(Map.of("idc", "sh"));
+        naming.defaultInstances(List.of(bj, sh));
+
+        NacosInstanceRegistry bjRegistry =
+                new NacosInstanceRegistry(naming.proxy(), new GatewayProperties(), env("bj"));
+
+        assertEquals(2, bjRegistry.snapshot("order").instances().size());
+        assertEquals(1, bjRegistry.endpointGroup("order").endpoints().size());
     }
 
     @Test

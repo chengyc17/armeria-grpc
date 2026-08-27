@@ -4,11 +4,12 @@
 
 - 内嵌 Armeria gRPC 服务端，监听 `rpc.port`（默认 18081）；
 - 从 `@GrpcService` 实现对应的 proto `option (app_id) = "100004337"` 读取服务标识；
+- 应用身份从 `src/main/resources/META-INF/app.config` 读取（`appid=100004337`），必须与 proto 的 `app_id` 一致，不一致则启动失败；
 - 启动时将 `ip:port` 注册到 Nacos 注册中心，退出时自动注销；
 - 通过 `rpc.config` 使用经典 Nacos 数组配置方式（`data-ids`）拉取全部配置的配置文件并订阅变更；
   group 不配置时默认取当前服务 appId（`100004337`）；
-- 默认拉取 `soa.json`（限流/熔断/黑白名单），未配置或拉取不到时不影响启动（治理使用本地兜底配置）；
-- 可选治理配置样例见 `src/main/resources/soa.json`，可发布到 Nacos（namespace=`fat`，group=`100004337`，dataId=`soa.json`）。
+- 默认拉取 `soa.json`（限流/熔断/黑白名单），未配置或拉取不到时不影响启动（治理全部关闭，即不限流、不熔断、全部放行）；
+- 治理配置以 Nacos 配置中心为准（namespace=`fat`，group=`100004337`，dataId=`soa.json`），本地不提供样例文件。
 
 ## 运行
 

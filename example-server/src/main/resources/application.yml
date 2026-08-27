@@ -1,20 +1,19 @@
 rpc:
-  # Armeria gRPC 服务端口；启动后会把 appId=100004337 注册到 Nacos
+  # Armeria gRPC 服务端口；启动后会把 appId=100004337 注册到 Nacos。
+  # 服务端（Armeria Server / 治理 / Nacos 注册）由 @GrpcService 是否存在自动激活，
+  # 本进程 OrderServiceImpl 已用 @GrpcService 标记，无需再配 rpc.server.enabled。
   port: 18081
+  # 默认开启 /rpc/schema 自描述端点；无需时可显式关闭
+  schema-enabled: true
   nacos:
     # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
     server-addr: 127.0.0.1:8848
-  client:
-    # 调用方上下文：机房/分组，会通过 gRPC 请求头透传给服务端
-    # appId 不需要在此配置——自动从 proto 的 option (app_id) 读取（100004337）
-    idc: bj
-    group-name: example
   config:
     # 配置中心：经典 Nacos 数组配置方式，data-ids 中的每个配置文件都会拉取并订阅变更。
+    # 只有配置了 rpc.config.server-addr 才会激活配置中心模块（不配置则整段不生效）。
     # group 不配置时默认取当前服务 appId（100004337）。
-    # 默认拉取 soa.json：服务治理（限流/熔断/黑白名单）只认该文件、本地无兜底，
-    # 参考 src/main/resources/soa.json；黑白名单条目是调用方的 appId（随 x-client-app-id
-    # 请求头传入，如 "deprecated-legacy-app"），不是 IP/CIDR。
+    # 默认拉取 soa.json：服务治理（限流/熔断/黑白名单）只认 Nacos 中该文件、本地无兜底；
+    # 黑白名单条目是调用方的 appId（随 x-client-app-id 请求头传入，如 "deprecated-legacy-app"），不是 IP/CIDR。
     # 文件不存在或未配置时不影响启动（治理功能全部关闭，即不限流、不熔断、全部放行）。
     server-addr: 127.0.0.1:8848
     data-ids:
@@ -25,3 +24,8 @@ rpc:
 logging:
   level:
     org.example: INFO
+    # 连接复用时对端关闭空闲连接产生的 Connection reset / ClosedSessionException 属正常现象，
+    # 该日志由 Armeria/Netty 以 WARN 输出，提高级别避免刷屏（ERROR 及以上的真实异常仍会输出）。
+    io.netty: ERROR
+    com.linecorp.armeria.server.HttpServerHandler: ERROR
+    com.linecorp.armeria.client.HttpSessionHandler: ERROR

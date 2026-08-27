@@ -7,6 +7,7 @@ import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.Environment;
 import org.springframework.core.env.MapPropertySource;
 
 import java.io.IOException;
@@ -33,6 +34,31 @@ public class OpsEnvironmentPostProcessor implements EnvironmentPostProcessor {
 
     public static final String PROPERTY_SOURCE_NAME = "opsEnvProperties";
     public static final String ENV_KEY = "env";
+    /** ops env.properties 中的机房标识（如 bj/sh/gz），与 Nacos 实例元数据的 idc 键一致 */
+    public static final String IDC_KEY = "idc";
+
+    /**
+     * 读取 ops 环境中的机房（idc）。{@link #IDC_KEY} 由本类在启动时从
+     * ops/env.properties 注入到 Spring Environment；未配置时返回 {@code defaultValue}。
+     * 各模块（server/gateway 等）统一通过此方法获取，避免散落的魔法字符串。
+     */
+    public static String idc(Environment environment, String defaultValue) {
+        return environment.getProperty(IDC_KEY, defaultValue);
+    }
+
+    /**
+     * 读取 ops 环境中的机房（idc），未配置（null 或空白）时抛出异常阻止启动，
+     * 与 {@link #loadOpsEnv} 对 {@code env} 键的 fail-fast 语义一致。
+     */
+    public static String requireIdc(Environment environment) {
+        String idc = idc(environment, null);
+        if (idc == null || idc.isBlank()) {
+            throw new IllegalStateException(
+                    "'idc' key is missing or blank in " + opsEnvFile()
+                            + ". Please set 'idc=<datacenter>' (e.g. idc=bj).");
+        }
+        return idc.trim();
+    }
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {

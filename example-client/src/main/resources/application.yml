@@ -1,8 +1,12 @@
 rpc:
-  # 每个进程都会启动内嵌 gRPC 服务端并注册到 Nacos（不再支持纯客户端模式）
+  # 本进程提供 ProductService（@GrpcService），会自动启动内嵌 gRPC 服务端并注册到 Nacos
+  # （服务端/治理/Nacos 注册由 @GrpcService 是否存在自动激活，无需 rpc.server.enabled）。
   port: 18083
-  # appId 不需要在此配置——自动从本进程 @GrpcService 对应的 proto option (app_id)
-  # 读取（ProductService 为 100004336），注册到 Nacos 并作为调用方标识随请求传递。
+  # 默认开启 /rpc/schema 自描述端点；无需时可显式关闭
+  schema-enabled: true
+  # appId 不需要在此配置——应用身份来自 META-INF/app.config（appid=100004336），
+  # 必须与本进程 ProductService 的 proto option (app_id) 一致，不一致时启动失败；
+  # 该 appId 注册到 Nacos，同时作为调用方标识随请求传递。
   nacos:
     # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
     server-addr: 127.0.0.1:8848
@@ -10,4 +14,15 @@ rpc:
     # 调用方上下文：机房/分组，会通过 gRPC 请求头透传给服务端
     idc: bj
     group-name: example
-  # 不配 rpc.config.* 即不激活配置中心模块（治理配置保持空配置，全部放行）
+  # 不配 rpc.config.*（特别是 rpc.config.server-addr）即不激活配置中心模块，治理配置保持空配置，全部放行
+server:
+  port: 12345
+
+logging:
+  level:
+    org.example: INFO
+    # 连接复用时对端关闭空闲连接产生的 Connection reset / ClosedSessionException 属正常现象，
+    # 该日志由 Armeria/Netty 以 WARN 输出，提高级别避免刷屏（ERROR 及以上的真实异常仍会输出）。
+    io.netty: ERROR
+    com.linecorp.armeria.server.HttpServerHandler: ERROR
+    com.linecorp.armeria.client.HttpSessionHandler: ERROR

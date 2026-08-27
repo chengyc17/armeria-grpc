@@ -47,4 +47,41 @@ class OpsEnvironmentPostProcessorTest {
         assertEquals("fat", props.get("env"));
         assertEquals("1", props.get("other"));
     }
+
+    @Test
+    void idcReadsOpsEnvFirstThenFallsBack() {
+        var withIdc = new org.springframework.core.env.StandardEnvironment();
+        withIdc.getPropertySources().addFirst(
+                new org.springframework.core.env.MapPropertySource("test", Map.of(OpsEnvironmentPostProcessor.IDC_KEY, "bj")));
+
+        assertEquals("bj", OpsEnvironmentPostProcessor.idc(withIdc, "sh"));
+    }
+
+    @Test
+    void idcFallsBackToDefaultWhenAbsent() {
+        var withoutIdc = new org.springframework.core.env.StandardEnvironment();
+
+        assertEquals("sh", OpsEnvironmentPostProcessor.idc(withoutIdc, "sh"));
+    }
+
+    @Test
+    void requireIdcFailsFastWhenMissing() {
+        var withoutIdc = new org.springframework.core.env.StandardEnvironment();
+
+        IllegalStateException e = assertThrows(IllegalStateException.class,
+                () -> OpsEnvironmentPostProcessor.requireIdc(withoutIdc));
+
+        assertTrue(e.getMessage().contains("idc"));
+        assertTrue(e.getMessage().contains("env.properties"));
+    }
+
+    @Test
+    void requireIdcReturnsTrimmedValueWhenPresent() {
+        var withIdc = new org.springframework.core.env.StandardEnvironment();
+        withIdc.getPropertySources().addFirst(
+                new org.springframework.core.env.MapPropertySource("test",
+                        Map.of(OpsEnvironmentPostProcessor.IDC_KEY, " bj ")));
+
+        assertEquals("bj", OpsEnvironmentPostProcessor.requireIdc(withIdc));
+    }
 }

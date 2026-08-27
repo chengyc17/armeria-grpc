@@ -43,7 +43,7 @@ public class GatewayService implements HttpService {
         this.clientFactory = ClientFactory.builder()
                 .connectTimeoutMillis(properties.getProxy().getConnectTimeoutMs())
                 .idleTimeoutMillis(properties.getProxy().getIdleTimeoutMs())
-                .maxNumEventLoopsPerEndpoint(properties.getProxy().getMaxNumConnectionsPerEndpoint())
+                .maxNumEventLoopsPerHttp1Endpoint(properties.getProxy().getMaxNumEventLoopsPerEndpoint())
                 .build();
     }
 

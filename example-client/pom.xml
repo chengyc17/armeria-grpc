@@ -17,12 +17,11 @@
         <dependency>
             <groupId>com.abc.order</groupId>
             <artifactId>order-server</artifactId>
-            <version>1.0.0</version>
         </dependency>
+        <!-- Spring Boot Web：提供 REST 测试入口 -->
         <dependency>
-            <groupId>com.abc.product</groupId>
-            <artifactId>product-server</artifactId>
-            <version>1.0.1</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
         <dependency>
             <groupId>org.example</groupId>
@@ -33,11 +32,6 @@
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
-        </dependency>
-        <!-- 提供 REST 接口，便于手动触发 gRPC 调用 -->
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
     </dependencies>
 

@@ -36,6 +36,8 @@ public class GatewayProperties {
 
         private String group = "DEFAULT_GROUP";
 
+        private String idc = "";
+
         /**
          * 兜底刷新间隔（毫秒）：订阅推送偶发丢失时，保证缓存最终与 Nacos 一致。
          */
@@ -55,6 +57,15 @@ public class GatewayProperties {
 
         public void setGroup(String group) {
             this.group = group;
+        }
+
+        /** 网关自身机房（就近访问）；为空时取 ops/env.properties 的 idc。 */
+        public String getIdc() {
+            return idc;
+        }
+
+        public void setIdc(String idc) {
+            this.idc = idc;
         }
 
         public long getRefreshIntervalMs() {
@@ -77,8 +88,8 @@ public class GatewayProperties {
         /** 客户端空闲连接保活时间（毫秒）。 */
         private int idleTimeoutMs = 60_000;
 
-        /** 每个后端实例的最大连接数（HTTP/1.1 并发上限；HTTP/2 下多路复用，几乎不受限）。 */
-        private int maxNumConnectionsPerEndpoint = 8;
+        /** HTTP/1.1 下每个后端端点的 event loop 数（决定并发连接上限）；HTTP/2 多路复用，几乎不受限。 */
+        private int maxNumEventLoopsPerEndpoint = 8;
 
         /** 请求体大小上限（字节）。 */
         private long maxRequestLength = 10 * 1024 * 1024;
@@ -110,12 +121,12 @@ public class GatewayProperties {
             this.idleTimeoutMs = idleTimeoutMs;
         }
 
-        public int getMaxNumConnectionsPerEndpoint() {
-            return maxNumConnectionsPerEndpoint;
+        public int getMaxNumEventLoopsPerEndpoint() {
+            return maxNumEventLoopsPerEndpoint;
         }
 
-        public void setMaxNumConnectionsPerEndpoint(int maxNumConnectionsPerEndpoint) {
-            this.maxNumConnectionsPerEndpoint = maxNumConnectionsPerEndpoint;
+        public void setMaxNumEventLoopsPerEndpoint(int maxNumEventLoopsPerEndpoint) {
+            this.maxNumEventLoopsPerEndpoint = maxNumEventLoopsPerEndpoint;
         }
 
         public long getMaxRequestLength() {

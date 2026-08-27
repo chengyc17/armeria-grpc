@@ -27,8 +27,6 @@ public class ClientContextServerInterceptor implements ServerInterceptor {
             Metadata.Key.of("x-client-hostname", Metadata.ASCII_STRING_MARSHALLER);
     private static final Metadata.Key<String> CLIENT_IDC_KEY =
             Metadata.Key.of("x-client-idc", Metadata.ASCII_STRING_MARSHALLER);
-    private static final Metadata.Key<String> CLIENT_GROUP_NAME_KEY =
-            Metadata.Key.of("x-client-group-name", Metadata.ASCII_STRING_MARSHALLER);
 
     @Override
     public <ReqT, RespT> ServerCall.Listener<ReqT> interceptCall(
@@ -40,8 +38,7 @@ public class ClientContextServerInterceptor implements ServerInterceptor {
                 headers.get(CLIENT_APP_ID_KEY),
                 headers.get(CLIENT_IP_KEY),
                 headers.get(CLIENT_HOSTNAME_KEY),
-                headers.get(CLIENT_IDC_KEY),
-                headers.get(CLIENT_GROUP_NAME_KEY));
+                headers.get(CLIENT_IDC_KEY));
 
         if (ClientContextHolder.set(ctx)) {
             log.debug("Set ClientContext: {}", ctx);

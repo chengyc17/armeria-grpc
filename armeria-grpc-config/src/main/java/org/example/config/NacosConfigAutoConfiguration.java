@@ -4,6 +4,8 @@ import com.alibaba.nacos.api.NacosFactory;
 import com.alibaba.nacos.api.PropertyKeyConst;
 import com.alibaba.nacos.api.config.ConfigService;
 import com.alibaba.nacos.api.exception.NacosException;
+import org.example.common.env.AppIdEnvironmentPostProcessor;
+import org.example.common.env.AppIdResolver;
 import org.example.rpc.server.GrpcServices;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -26,7 +28,7 @@ import java.util.Properties;
  */
 @AutoConfiguration
 @EnableConfigurationProperties(NacosConfigProperties.class)
-@ConditionalOnProperty(prefix = "rpc.config")
+@ConditionalOnProperty(prefix = "rpc.config", name = "server-addr")
 public class NacosConfigAutoConfiguration {
 
     @Bean(destroyMethod = "shutDown")
@@ -52,9 +54,13 @@ public class NacosConfigAutoConfiguration {
     public AppConfigService appConfigService(ConfigService configService,
                                              NacosConfigProperties properties,
                                              ApplicationContext context,
-                                             ApplicationEventPublisher eventPublisher) {
+                                             ApplicationEventPublisher eventPublisher,
+                                             Environment environment) {
         List<String> dataIds = resolveDataIds(properties.getDataIds());
-        return new AppConfigService(configService, properties, dataIds, GrpcServices.resolveAppId(context), eventPublisher);
+        String appId = AppIdResolver.resolve(
+                environment.getProperty(AppIdEnvironmentPostProcessor.APP_ID_PROPERTY),
+                GrpcServices.findAppId(context));
+        return new AppConfigService(configService, properties, dataIds, appId, eventPublisher);
     }
 
     /**
