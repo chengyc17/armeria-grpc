@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.example</groupId>
+        <groupId>com.armeria.grpc</groupId>
         <artifactId>armeria-grpc</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
@@ -14,7 +14,7 @@
     <dependencies>
         <!-- 公共模块：提供从本机 ops 目录读取 env 的 EnvironmentPostProcessor -->
         <dependency>
-            <groupId>org.example</groupId>
+            <groupId>com.armeria.grpc</groupId>
             <artifactId>armeria-grpc-common</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -31,10 +31,16 @@
             <artifactId>armeria</artifactId>
         </dependency>
 
-        <!-- Nacos：按 appid 查询并订阅注册实例 -->
+        <!-- 注册中心抽象层：SPI 接口 + Nacos 实现（切换中心 = 换实现依赖 + 改 rpc.registry.registries） -->
         <dependency>
-            <groupId>com.alibaba.nacos</groupId>
-            <artifactId>nacos-client</artifactId>
+            <groupId>com.armeria.grpc</groupId>
+            <artifactId>armeria-grpc-registry-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.armeria.grpc</groupId>
+            <artifactId>armeria-grpc-registry-nacos</artifactId>
+            <version>${project.version}</version>
         </dependency>
 
         <!-- 测试：JUnit 5（纯单元/集成测试，不依赖 Spring 上下文） -->
@@ -58,7 +64,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>org.example.GatewayApplication</mainClass>
+                    <mainClass>com.armeria.grpc.gateway.GatewayApplication</mainClass>
                 </configuration>
             </plugin>
             <plugin>

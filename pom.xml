@@ -4,17 +4,28 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>org.example</groupId>
+    <groupId>com.armeria.grpc</groupId>
     <artifactId>armeria-grpc</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <modules>
-        <module>armeria-grpc-api</module>
+        <!-- ===== 基础设施抽象层（业务只依赖两个 api 模块，实现按需引入） ===== -->
+        <!-- 注册中心抽象：registry-api + 实现（nacos/eureka/k8s） -->
+        <module>armeria-grpc-registry/armeria-grpc-registry-api</module>
+        <module>armeria-grpc-registry/armeria-grpc-registry-nacos</module>
+        <module>armeria-grpc-registry/armeria-grpc-registry-eureka</module>
+        <module>armeria-grpc-registry/armeria-grpc-registry-k8s</module>
+        <!-- 配置中心抽象：config-api + 实现（nacos/apollo） -->
+        <module>armeria-grpc-config/armeria-grpc-config-api</module>
+        <module>armeria-grpc-config/armeria-grpc-config-nacos</module>
+        <module>armeria-grpc-config/armeria-grpc-config-apollo</module>
+        <!-- 公共模块：appId 解析、多中心合并端点组 -->
+        <module>armeria-grpc-common</module>
+        <!-- ===== 业务模块 ===== -->
         <module>armeria-server</module>
+        <module>armeria-grpc-api</module>
         <module>armeria-grpc-canary</module>
         <module>armeria-grpc-gateway</module>
-        <module>armeria-grpc-config</module>
-        <module>armeria-grpc-common</module>
         <module>example-server</module>
         <module>example-client</module>
     </modules>

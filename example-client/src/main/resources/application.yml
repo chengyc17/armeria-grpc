@@ -1,15 +1,20 @@
 rpc:
-  # 本进程提供 ProductService（@GrpcService），会自动启动内嵌 gRPC 服务端并注册到 Nacos
-  # （服务端/治理/Nacos 注册由 @GrpcService 是否存在自动激活，无需 rpc.server.enabled）。
+  # 本进程是纯消费方（OrderClientService 通过 stub 调用 example-server，无 @GrpcService），
+  # 因此不启动内嵌 gRPC 服务端、不注册自身实例；仅用注册中心做服务发现。
   port: 18083
-  # 默认开启 /rpc/schema 自描述端点；无需时可显式关闭
+  # 默认开启 /rpc/schema 自描述端点；无 @GrpcService 时服务端不激活，此配置不生效，保留仅备将来加服务
   schema-enabled: true
   # appId 不需要在此配置——应用身份来自 META-INF/app.config（appid=100004336），
-  # 必须与本进程 ProductService 的 proto option (app_id) 一致，不一致时启动失败；
-  # 该 appId 注册到 Nacos，同时作为调用方标识随请求传递。
-  nacos:
-    # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
-    server-addr: 127.0.0.1:8848
+  # 该 appId 作为调用方标识随请求透传给服务端（治理黑白名单依据），不会注册到 Nacos。
+  # 注册中心抽象层：只发现不注册
+  registry:
+    registries:
+      - name: nacos-main
+        type: nacos
+        # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
+        server-addr: 127.0.0.1:8848
+        # 纯消费方：false = 只发现不注册（默认 true 会尝试注册，此处显式关闭）
+        register-enabled: false
   client:
     # 调用方上下文：机房/分组，会通过 gRPC 请求头透传给服务端
     idc: bj
@@ -20,7 +25,7 @@ server:
 
 logging:
   level:
-    org.example: INFO
+    com.armeria.grpc: INFO
     # 连接复用时对端关闭空闲连接产生的 Connection reset / ClosedSessionException 属正常现象，
     # 该日志由 Armeria/Netty 以 WARN 输出，提高级别避免刷屏（ERROR 及以上的真实异常仍会输出）。
     io.netty: ERROR

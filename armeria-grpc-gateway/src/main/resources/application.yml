@@ -5,10 +5,7 @@ spring:
 gateway:
   # Armeria 网关端口（非阻塞，HTTP/1.1 + HTTP/2）
   port: 9082
-  nacos:
-    # namespace 默认取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: /ops/env.properties）
-    server-addr: 127.0.0.1:8848
-    group: DEFAULT_GROUP
+  registry:
     # 网关自身机房（就近访问用）；为空时取本机 ops 目录 env.properties 中的 idc
     # idc: bj
     # 兜底刷新间隔（毫秒）；订阅推送偶发丢失时保证缓存最终一致
@@ -25,3 +22,20 @@ gateway:
     # 请求/响应体大小上限（字节），默认 10 MiB
     max-request-length: 10485760
     max-response-length: 10485760
+
+# 注册中心抽象层：与 armeria-server 同一套配置（切换中心 = 换 registry-* 依赖 + 改这里）
+rpc:
+  registry:
+    # 单中心不可用是否 fail-fast；网关侧发现失败由多中心合并容忍
+    fail-fast: false
+    registries:
+      - name: nacos-main
+        type: nacos
+        # namespace 默认取本机 ops 目录 env.properties 中的 env 值（Windows: C:\ops\env.properties，Linux: /ops/env.properties）
+        server-addr: 127.0.0.1:8848
+        # 网关只发现不注册；如未来网关需要注册自身，改为 true 并配 weight
+        register-enabled: false
+
+logging:
+  level:
+    com.armeria.grpc: INFO

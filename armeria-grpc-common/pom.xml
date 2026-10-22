@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.example</groupId>
+        <groupId>com.armeria.grpc</groupId>
         <artifactId>armeria-grpc</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
@@ -12,6 +12,19 @@
     <artifactId>armeria-grpc-common</artifactId>
 
     <dependencies>
+        <!-- 注册中心抽象层：RegistryInstance 统一实例模型 + 多中心合并 -->
+        <dependency>
+            <groupId>com.armeria.grpc</groupId>
+            <artifactId>armeria-grpc-registry-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- Armeria：多中心动态端点组（armeria 单体 jar 内含 client/server 全部类） -->
+        <dependency>
+            <groupId>com.linecorp.armeria</groupId>
+            <artifactId>armeria</artifactId>
+        </dependency>
+
         <!-- Spring Boot：EnvironmentPostProcessor（读取本机 ops 目录的 env 配置） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

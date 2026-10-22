@@ -5,9 +5,16 @@ rpc:
   port: 18081
   # 默认开启 /rpc/schema 自描述端点；无需时可显式关闭
   schema-enabled: true
-  nacos:
-    # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
-    server-addr: 127.0.0.1:8848
+  # 注册中心抽象层（与 gateway / registry-* 同一套配置）：切换中心 = 换 registry-* 依赖 + 改这里
+  registry:
+    # 单中心注册失败是否 fail-fast；默认 false（容忍，WARN，实例随心跳自愈）
+    fail-fast: false
+    registries:
+      - name: nacos-main
+        type: nacos
+        # Nacos 注册中心地址；namespace 默认取本机 ops 目录 env.properties 中的 env 值（本机为 fat）
+        server-addr: 127.0.0.1:8848
+        # 本进程提供服务端（@GrpcService），注册自身实例；register-enabled 默认 true，可省略
   config:
     # 配置中心：经典 Nacos 数组配置方式，data-ids 中的每个配置文件都会拉取并订阅变更。
     # 只有配置了 rpc.config.server-addr 才会激活配置中心模块（不配置则整段不生效）。
@@ -23,7 +30,7 @@ rpc:
 
 logging:
   level:
-    org.example: INFO
+    com.armeria.grpc: INFO
     # 连接复用时对端关闭空闲连接产生的 Connection reset / ClosedSessionException 属正常现象，
     # 该日志由 Armeria/Netty 以 WARN 输出，提高级别避免刷屏（ERROR 及以上的真实异常仍会输出）。
     io.netty: ERROR

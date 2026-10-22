@@ -3,4 +3,4 @@
 # Without these entries, ${env} placeholders and the app identity from
 # META-INF/app.config would not resolve. When upgrading to Spring Boot 4, migrate
 # this registration to META-INF/spring/org.springframework.boot.env.EnvironmentPostProcessor.
-org.springframework.boot.env.EnvironmentPostProcessor=org.example.common.env.OpsEnvironmentPostProcessor,org.example.common.env.AppIdEnvironmentPostProcessor
+org.springframework.boot.env.EnvironmentPostProcessor=com.armeria.grpc.common.env.OpsEnvironmentPostProcessor,com.armeria.grpc.common.env.AppIdEnvironmentPostProcessor

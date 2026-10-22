@@ -11,10 +11,38 @@
     <file url="file://$PROJECT_DIR$/armeria-grpc-canary/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-common/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-api/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-api/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-apollo/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-apollo/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-nacos/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config-nacos/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-api/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-api/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-apollo/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-apollo/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-nacos/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-config/armeria-grpc-config-nacos/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-config/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-config/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-gateway/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-grpc-gateway/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-api/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-api/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-eureka/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-eureka/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-k8s/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-k8s/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-nacos/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry-nacos/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-api/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-api/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-eureka/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-eureka/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-k8s/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-k8s/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-nacos/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/armeria-grpc-registry/armeria-grpc-registry-nacos/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-server/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/armeria-server/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/example-client/src/main/java" charset="UTF-8" />

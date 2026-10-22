@@ -1,0 +1,1 @@
+com.armeria.grpc.registry.k8s.K8sRegistryAutoConfiguration

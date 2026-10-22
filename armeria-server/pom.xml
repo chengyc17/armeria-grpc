@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.example</groupId>
+        <groupId>com.armeria.grpc</groupId>
         <artifactId>armeria-grpc</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
@@ -14,14 +14,20 @@
     <dependencies>
         <!-- 公共模块：@GrpcService 注解、appId 解析、单 gRPC 实现规则 -->
         <dependency>
-            <groupId>org.example</groupId>
+            <groupId>com.armeria.grpc</groupId>
             <artifactId>armeria-grpc-common</artifactId>
             <version>${project.version}</version>
         </dependency>
-        <!-- 配置模块：从 Nacos（soa.json）读取限流/熔断/黑白名单并支持热更新 -->
+        <!-- 配置中心抽象层 SPI：ConfigSource / ConfigParser / 变更事件 -->
         <dependency>
-            <groupId>org.example</groupId>
-            <artifactId>armeria-grpc-config</artifactId>
+            <groupId>com.armeria.grpc</groupId>
+            <artifactId>armeria-grpc-config-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- 注册中心抽象层 SPI：ServiceDiscovery / ServiceRegistrar / RegistryInstance -->
+        <dependency>
+            <groupId>com.armeria.grpc</groupId>
+            <artifactId>armeria-grpc-registry-api</artifactId>
             <version>${project.version}</version>
         </dependency>
 
@@ -44,11 +50,6 @@
         <dependency>
             <groupId>com.linecorp.armeria</groupId>
             <artifactId>armeria-grpc</artifactId>
-        </dependency>
-        <!-- Nacos -->
-        <dependency>
-            <groupId>com.alibaba.nacos</groupId>
-            <artifactId>nacos-client</artifactId>
         </dependency>
 
         <!-- gRPC / Protobuf -->

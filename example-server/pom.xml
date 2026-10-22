@@ -4,7 +4,7 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
-        <groupId>org.example</groupId>
+        <groupId>com.armeria.grpc</groupId>
         <artifactId>armeria-grpc</artifactId>
         <version>1.0-SNAPSHOT</version>
     </parent>
@@ -19,7 +19,7 @@
             <artifactId>order-server</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.example</groupId>
+            <groupId>com.armeria.grpc</groupId>
             <artifactId>armeria-server</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -43,7 +43,7 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <mainClass>org.example.server.OrderServerApplication</mainClass>
+                    <mainClass>com.armeria.grpc.example.server.OrderServerApplication</mainClass>
                 </configuration>
             </plugin>
             <plugin>
